@@ -57,7 +57,18 @@ const TradeTab = (() => {
   }
   function fmtTime(iso) {
     if (!iso) return '--:--:--';
-    return iso.slice(11, 19);
+    // UTC ISO 文字列を Asia/Tokyo (JST = UTC+9) の HH:mm:ss に変換して表示
+    try {
+      return new Date(iso).toLocaleTimeString('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        hour:     '2-digit',
+        minute:   '2-digit',
+        second:   '2-digit',
+        hour12:   false,
+      });
+    } catch (_) {
+      return iso.slice(11, 19); // フォールバック (ブラウザが Intl 非対応の場合)
+    }
   }
   function fmtDate(iso) {
     if (!iso) return '--';
