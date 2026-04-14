@@ -158,6 +158,18 @@ const TradeTab = (() => {
         <span>セクター: ${marketData.sectorStrength}</span>
         <span class="market-cond cond-${marketData.marketCondition}">地合い: ${marketData.marketCondition}</span>
       </div>` : ''}
+      <div class="screen-share-bar">
+        <div class="screen-share-controls">
+          <span class="screen-share-label">画面共有</span>
+          <button id="btn-screen-start"   class="btn btn-sm btn-screen-start">共有開始</button>
+          <button id="btn-screen-capture" class="btn btn-sm btn-screen-capture" disabled>今の画面を取得</button>
+          <button id="btn-screen-stop"    class="btn btn-sm btn-screen-stop"    disabled>共有停止</button>
+        </div>
+        <div id="screen-preview-wrap" class="hidden">
+          <video id="screen-preview" autoplay muted playsinline></video>
+          <img   id="screen-capture-result" class="hidden" alt="キャプチャ結果">
+        </div>
+      </div>
     </div>`;
   }
 
@@ -586,6 +598,21 @@ const TradeTab = (() => {
     // 市場情報更新
     const btnMarket = document.getElementById('btn-market-update');
     if (btnMarket) btnMarket.addEventListener('click', () => App.onMarketUpdate());
+
+    // 画面共有
+    const btnScreenStart = document.getElementById('btn-screen-start');
+    if (btnScreenStart) btnScreenStart.addEventListener('click', () => ScreenShare.start());
+
+    const btnScreenCapture = document.getElementById('btn-screen-capture');
+    if (btnScreenCapture) btnScreenCapture.addEventListener('click', () => ScreenShare.capture());
+
+    const btnScreenStop = document.getElementById('btn-screen-stop');
+    if (btnScreenStop) btnScreenStop.addEventListener('click', () => ScreenShare.stop());
+
+    // render() 再実行後にボタン・プレビュー状態を復元
+    // (TradeTab.render() は innerHTML を丸ごと差し替えるため、
+    //  共有中だった場合にボタンが disabled に戻るのを防ぐ)
+    ScreenShare.restoreUI();
 
     // 購入
     const btnBuy = document.getElementById('btn-buy');

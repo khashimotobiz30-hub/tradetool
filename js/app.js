@@ -4,6 +4,121 @@
 // ============================================================
 
 // ----------------------------------------------------------
+// ScreenShare モジュール
+// 画面共有 → フレームキャプチャを管理する
+// stream / video / canvas はこのモジュール内で保持し、
+// App や TradeTab からは start / stop / capture を呼ぶだけでよい
+// ----------------------------------------------------------
+const ScreenShare = (() => {
+  let _stream = null;
+  let _video  = null;
+  let _canvas = null; // 非DOM canvas (描画専用)
+
+  // DOM要素の参照を遅延取得（render後に呼ばれるため）
+  function _ensureVideo() {
+    if (!_video) _video = document.getElementById('screen-preview');
+  }
+  function _ensureCanvas() {
+    if (!_canvas) _canvas = document.createElement('canvas');
+  }
+
+  // UI状態の切り替えヘルパー
+  function _setSharing(active) {
+    const wrap    = document.getElementById('screen-preview-wrap');
+    const btnStart   = document.getElementById('btn-screen-start');
+    const btnCapture = document.getElementById('btn-screen-capture');
+    const btnStop    = document.getElementById('btn-screen-stop');
+
+    if (wrap)       wrap.classList.toggle('hidden', !active);
+    if (btnStart)   btnStart.disabled   =  active;
+    if (btnCapture) btnCapture.disabled = !active;
+    if (btnStop)    btnStop.disabled    = !active;
+
+    // キャプチャ結果は共有停止時に非表示に戻す
+    if (!active) {
+      const capImg = document.getElementById('screen-capture-result');
+      if (capImg) capImg.classList.add('hidden');
+    }
+  }
+
+  // 画面共有開始
+  async function start() {
+    try {
+      _ensureVideo();
+      _stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      _video.srcObject = _stream;
+
+      // ユーザーが OS 側から共有停止した場合も同期して止める
+      _stream.getVideoTracks()[0].addEventListener('ended', () => stop());
+
+      _setSharing(true);
+    } catch (e) {
+      // NotAllowedError (共有拒否 / キャンセル) は静かに無視
+      if (e.name !== 'NotAllowedError') {
+        TradeTab.showToast('画面共有エラー: ' + e.message, 'warn');
+      }
+    }
+  }
+
+  // 共有停止
+  function stop() {
+    if (_stream) {
+      _stream.getTracks().forEach(t => t.stop());
+      _stream = null;
+    }
+    _ensureVideo();
+    if (_video) _video.srcObject = null;
+    _setSharing(false);
+  }
+
+  // フレームキャプチャ → base64 JPEG を返す
+  function capture() {
+    _ensureVideo();
+    _ensureCanvas();
+
+    if (!_stream || !_video || _video.readyState < 2) {
+      TradeTab.showToast('先に画面共有を開始してください', 'warn');
+      return null;
+    }
+
+    // video の実解像度に合わせてキャンバスサイズを設定
+    _canvas.width  = _video.videoWidth  || 1280;
+    _canvas.height = _video.videoHeight || 720;
+
+    const ctx = _canvas.getContext('2d');
+    ctx.drawImage(_video, 0, 0, _canvas.width, _canvas.height);
+
+    const dataUrl = _canvas.toDataURL('image/jpeg', 0.8);
+
+    // キャプチャ結果をプレビュー表示
+    const capImg = document.getElementById('screen-capture-result');
+    if (capImg) {
+      capImg.src = dataUrl;
+      capImg.classList.remove('hidden');
+    }
+
+    // 次ステップ（AI解析）で使えるよう console にも出力
+    console.log('[ScreenShare] capture OK —',
+      _canvas.width + 'x' + _canvas.height,
+      '— dataUrl bytes:', dataUrl.length
+    );
+
+    TradeTab.showToast('画面を取得しました', 'info');
+    return dataUrl; // Step2以降で DataService に渡す用
+  }
+
+  // render() 再実行後に UI 状態を復元する
+  // _attachEventListeners() の末尾から呼ばれる
+  function restoreUI() {
+    const active = _stream !== null;
+    if (active) _setSharing(true);
+    // 非共有中はデフォルト (disabled) のままなので何もしない
+  }
+
+  return { start, stop, capture, restoreUI };
+})();
+
+// ----------------------------------------------------------
 // 全角→半角 数値正規化ユーティリティ (グローバル)
 // price-input / qty-units など全ての数値入力欄で使用する
 // ----------------------------------------------------------

@@ -71,6 +71,7 @@ body {
 
 .tab-content { display: block; }
 .tab-content.hidden { display: none; }
+.hidden { display: none !important; }
 
 /* --- カード --- */
 .card {
@@ -505,6 +506,53 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
 .btn-end       { background: #1e2a3a; color: #fff; padding: 10px 28px; font-size: 14px; }
 .btn-icon      { background: #f0f2f5; color: #444; padding: 4px 10px; font-size: 14px; }
 .btn-sm        { padding: 4px 12px; font-size: 12px; }
+.btn-screen-start   { background: #2e7d32; color: #fff; }
+.btn-screen-capture { background: #1e5fa8; color: #fff; }
+.btn-screen-stop    { background: #c62828; color: #fff; }
+
+/* ============================================================
+   画面共有バー
+   ============================================================ */
+.screen-share-bar {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e8eaed;
+}
+.screen-share-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.screen-share-label {
+  font-size: 11px;
+  color: #888;
+  font-weight: 600;
+  margin-right: 2px;
+}
+#screen-preview-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+#screen-preview {
+  width: 192px;
+  height: 108px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: #000;
+  object-fit: contain;
+}
+#screen-capture-result {
+  width: 192px;
+  height: 108px;
+  border-radius: 4px;
+  border: 1px solid #1e5fa8;
+  background: #000;
+  object-fit: contain;
+}
 
 /* ============================================================
    取引一覧
