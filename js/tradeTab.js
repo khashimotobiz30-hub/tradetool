@@ -123,12 +123,16 @@ const TradeTab = (() => {
           <span class="current-price">${price}</span>
           <span class="source-tag">画面共有</span>
         </div>
-        <div class="update-buttons">
-          <div class="update-btn-group">
-            <button id="btn-stock-update" class="btn btn-primary">銘柄更新</button>
-            <span class="update-time">最終: <strong>${stockTime}</strong> ${confBadge}</span>
-          </div>
+        <div class="action-bar">
+          <button id="btn-stock-update"  class="btn btn-primary btn-sm">銘柄更新</button>
+          <button id="btn-market-update" class="btn btn-secondary btn-sm">市場情報更新</button>
+          <button id="btn-screen-start"  class="btn btn-sm btn-screen-start">共有開始</button>
+          <button id="btn-screen-stop"   class="btn btn-sm btn-screen-stop" disabled>共有停止</button>
         </div>
+      </div>
+      <div class="update-meta">
+        <span class="update-time">最終: <strong>${stockTime}</strong> ${confBadge}</span>
+        ${stockData ? `<button id="btn-show-capture" class="btn-link">取得画像を確認</button>` : ''}
       </div>
       ${stockData ? `
       <div class="stock-sub-info">
@@ -136,22 +140,60 @@ const TradeTab = (() => {
         <span>5MA: ${fmtPrc(stockData.ma5)}</span>
       </div>` : `
       <div class="share-guidance">
-        画面共有を開始してから「銘柄更新」を押すと解析が始まります
+        「共有開始」で画面共有を開始してから「銘柄更新」を押すと解析が始まります
       </div>`}
-      <div class="screen-share-bar">
-        <div class="screen-share-controls">
-          <span class="screen-share-label">画面共有</span>
-          <button id="btn-screen-start"   class="btn btn-sm btn-screen-start">共有開始</button>
-          <button id="btn-screen-capture" class="btn btn-sm btn-screen-capture" disabled>今の画面を取得</button>
-          <button id="btn-screen-stop"    class="btn btn-sm btn-screen-stop"    disabled>共有停止</button>
-        </div>
-        <div id="screen-preview-wrap" class="hidden">
-          <video id="screen-preview" autoplay muted playsinline></video>
-          <img   id="screen-capture-result" class="hidden" alt="キャプチャ結果">
-          <pre   id="analyze-result" class="analyze-result hidden"></pre>
-        </div>
-      </div>
     </div>`;
+  }
+
+  // --- 取得画像確認モーダル ---
+  function showCaptureModal() {
+    const capture = ScreenShare.getLastCapture();
+
+    // 既存モーダルがあれば閉じる
+    document.querySelectorAll('.capture-modal-overlay').forEach(el => el.remove());
+
+    const overlay = document.createElement('div');
+    overlay.className = 'capture-modal-overlay';
+
+    let bodyHtml;
+    if (!capture) {
+      bodyHtml = `<p class="capture-modal-empty">まだ画像が取得されていません。<br>「共有開始」→「銘柄更新」の順に操作してください。</p>`;
+    } else {
+      const timeStr = fmtTime(capture.capturedAt);
+      const a = capture.analyzed;
+      const analysisHtml = a
+        ? `<table class="capture-analysis-table">
+             <tr><th>現在値</th><td>${a.currentPrice != null ? fmtPrc(a.currentPrice) : '--'}</td></tr>
+             <tr><th>VWAP</th><td>${a.vwap != null ? fmtPrc(a.vwap) : '--'}</td></tr>
+             <tr><th>5MA</th><td>${a.ma5 != null ? fmtPrc(a.ma5) : '--'}</td></tr>
+             <tr><th>信頼度</th><td>${a.confidence ?? '--'}</td></tr>
+           </table>`
+        : `<p class="capture-modal-empty">解析結果なし</p>`;
+
+      bodyHtml = `
+        <div class="capture-modal-time">取得時刻: ${timeStr}</div>
+        <img class="capture-modal-img" src="${capture.dataUrl}" alt="取得画像">
+        <div class="capture-modal-analysis">
+          <div class="capture-analysis-title">解析結果</div>
+          ${analysisHtml}
+        </div>`;
+    }
+
+    overlay.innerHTML = `
+      <div class="capture-modal-box">
+        <div class="capture-modal-header">
+          <span class="capture-modal-title">取得画像を確認</span>
+          <button class="btn-modal-close" id="btn-capture-close">✕</button>
+        </div>
+        <div class="capture-modal-body">
+          ${bodyHtml}
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    document.getElementById('btn-capture-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
 
   // --- 判断パネル ---
@@ -576,17 +618,22 @@ const TradeTab = (() => {
     const btnStock = document.getElementById('btn-stock-update');
     if (btnStock) btnStock.addEventListener('click', () => App.onStockUpdate());
 
-    // 画面共有
+    // 市場情報更新
+    const btnMarket = document.getElementById('btn-market-update');
+    if (btnMarket) btnMarket.addEventListener('click', () => App.onMarketUpdate());
+
+    // 画面共有 開始 / 停止
     const btnScreenStart = document.getElementById('btn-screen-start');
     if (btnScreenStart) btnScreenStart.addEventListener('click', () => ScreenShare.start());
-
-    const btnScreenCapture = document.getElementById('btn-screen-capture');
-    if (btnScreenCapture) btnScreenCapture.addEventListener('click', () => ScreenShare.capture());
 
     const btnScreenStop = document.getElementById('btn-screen-stop');
     if (btnScreenStop) btnScreenStop.addEventListener('click', () => ScreenShare.stop());
 
-    // render() 再実行後にボタン・プレビュー状態を復元
+    // 取得画像を確認
+    const btnShowCapture = document.getElementById('btn-show-capture');
+    if (btnShowCapture) btnShowCapture.addEventListener('click', () => showCaptureModal());
+
+    // render() 再実行後にボタン状態を復元
     // (TradeTab.render() は innerHTML を丸ごと差し替えるため、
     //  共有中だった場合にボタンが disabled に戻るのを防ぐ)
     ScreenShare.restoreUI();
@@ -731,5 +778,5 @@ const TradeTab = (() => {
     });
   }
 
-  return { render, showEndDayResult, showToast };
+  return { render, showEndDayResult, showToast, showCaptureModal };
 })();

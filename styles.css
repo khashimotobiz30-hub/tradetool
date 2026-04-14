@@ -143,6 +143,138 @@ body {
   color: #888;
 }
 
+/* --- アクションバー (4ボタン横並び) --- */
+.action-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* --- update-meta: 最終時刻 + 取得画像リンク --- */
+.update-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* --- テキストリンク風ボタン --- */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+  color: #1e5fa8;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  line-height: 1;
+}
+.btn-link:hover { color: #0d3c7a; }
+
+/* ============================================================
+   取得画像確認モーダル
+   ============================================================ */
+.capture-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.capture-modal-box {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+  width: min(92vw, 640px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.capture-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8eaed;
+}
+.capture-modal-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1a1a1a;
+}
+.btn-modal-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #888;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.btn-modal-close:hover { background: #f0f0f0; color: #333; }
+.capture-modal-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.capture-modal-time {
+  font-size: 12px;
+  color: #888;
+}
+.capture-modal-img {
+  width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background: #000;
+}
+.capture-modal-empty {
+  font-size: 13px;
+  color: #888;
+  text-align: center;
+  padding: 24px 0;
+  margin: 0;
+}
+.capture-modal-analysis {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.capture-analysis-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.capture-analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.capture-analysis-table th {
+  text-align: left;
+  color: #666;
+  font-weight: 600;
+  padding: 3px 10px 3px 0;
+  width: 80px;
+}
+.capture-analysis-table td {
+  color: #1a1a1a;
+  padding: 3px 0;
+}
+
 .stock-sub-info, .market-sub-info {
   display: flex;
   gap: 16px;

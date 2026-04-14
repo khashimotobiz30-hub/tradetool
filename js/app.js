@@ -5,55 +5,48 @@
 
 // ----------------------------------------------------------
 // ScreenShare モジュール
-// 画面共有 → フレームキャプチャを管理する
-// stream / video / canvas はこのモジュール内で保持し、
-// App や TradeTab からは start / stop / capture を呼ぶだけでよい
+// 画面共有 → フレームキャプチャ → 直近1枚を保持
+//
+// _video  : 非DOM video 要素 (start() 時に生成、プレビューなし)
+// _canvas : 非DOM canvas 要素 (drawImage 専用)
+// _lastCapture  : 直近キャプチャ { dataUrl, capturedAt }
+// _lastAnalysis : 直近解析結果 { currentPrice, vwap, ma5, confidence }
 // ----------------------------------------------------------
 const ScreenShare = (() => {
-  let _stream = null;
-  let _video  = null;
-  let _canvas = null; // 非DOM canvas (描画専用)
+  let _stream       = null;
+  let _video        = null;
+  let _canvas       = null;
+  let _lastCapture  = null; // 直近1枚のみ保持
+  let _lastAnalysis = null;
 
-  // DOM要素の参照を遅延取得（render後に呼ばれるため）
-  function _ensureVideo() {
-    if (!_video) _video = document.getElementById('screen-preview');
-  }
-  function _ensureCanvas() {
-    if (!_canvas) _canvas = document.createElement('canvas');
-  }
-
-  // UI状態の切り替えヘルパー
+  // 共有開始 / 停止に応じてボタン状態を切り替える
   function _setSharing(active) {
-    const wrap    = document.getElementById('screen-preview-wrap');
-    const btnStart   = document.getElementById('btn-screen-start');
-    const btnCapture = document.getElementById('btn-screen-capture');
-    const btnStop    = document.getElementById('btn-screen-stop');
-
-    if (wrap)       wrap.classList.toggle('hidden', !active);
-    if (btnStart)   btnStart.disabled   =  active;
-    if (btnCapture) btnCapture.disabled = !active;
-    if (btnStop)    btnStop.disabled    = !active;
-
-    // キャプチャ結果は共有停止時に非表示に戻す
-    if (!active) {
-      const capImg = document.getElementById('screen-capture-result');
-      if (capImg) capImg.classList.add('hidden');
-    }
+    const btnStart = document.getElementById('btn-screen-start');
+    const btnStop  = document.getElementById('btn-screen-stop');
+    if (btnStart) btnStart.disabled =  active;
+    if (btnStop)  btnStop.disabled  = !active;
   }
 
   // 画面共有開始
+  // _video は非DOM 要素として生成し、stream を srcObject にセット
   async function start() {
     try {
-      _ensureVideo();
       _stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      _video.srcObject = _stream;
 
-      // ユーザーが OS 側から共有停止した場合も同期して止める
+      if (!_video) {
+        _video = document.createElement('video');
+        _video.muted      = true;
+        _video.playsInline = true;
+      }
+      _video.srcObject = _stream;
+      await _video.play().catch(() => {}); // 非DOM要素のため明示的に play()
+
+      // OS 側から停止された場合も同期して止める
       _stream.getVideoTracks()[0].addEventListener('ended', () => stop());
 
       _setSharing(true);
+      TradeTab.showToast('画面共有を開始しました', 'info');
     } catch (e) {
-      // NotAllowedError (共有拒否 / キャンセル) は静かに無視
       if (e.name !== 'NotAllowedError') {
         TradeTab.showToast('画面共有エラー: ' + e.message, 'warn');
       }
@@ -66,134 +59,62 @@ const ScreenShare = (() => {
       _stream.getTracks().forEach(t => t.stop());
       _stream = null;
     }
-    _ensureVideo();
     if (_video) _video.srcObject = null;
     _setSharing(false);
+    TradeTab.showToast('画面共有を停止しました', 'info');
   }
 
-  // 【公開】フレームをキャプチャして base64 文字列を返す
-  // DataService.fetchScreenCaptureData() からも呼ばれる純粋なキャプチャ関数。
-  // UI 更新（プレビュー表示）のみ行い、解析は行わない。
-  // ストリームが未開始の場合は Error をスロー。
+  // フレームをキャプチャして base64 文字列を返す
+  // DataService から呼ばれる。_lastCapture を更新する。
+  // 共有未開始・映像未準備の場合は Error をスロー。
   function captureBase64() {
-    _ensureVideo();
-    _ensureCanvas();
-
-    if (!_stream || !_video || _video.readyState < 2) {
+    if (!_stream || !_video) {
       throw new Error('画面共有が開始されていません。先に「共有開始」を押してください。');
     }
+    if (_video.videoWidth === 0) {
+      throw new Error('画面共有の映像が準備できていません。少し待ってから再試行してください。');
+    }
 
-    _canvas.width  = _video.videoWidth  || 1280;
-    _canvas.height = _video.videoHeight || 720;
+    if (!_canvas) _canvas = document.createElement('canvas');
+    _canvas.width  = _video.videoWidth;
+    _canvas.height = _video.videoHeight;
 
-    const ctx = _canvas.getContext('2d');
-    ctx.drawImage(_video, 0, 0, _canvas.width, _canvas.height);
+    _canvas.getContext('2d').drawImage(_video, 0, 0, _canvas.width, _canvas.height);
 
     const dataUrl = _canvas.toDataURL('image/jpeg', 0.8);
 
-    // キャプチャ結果をプレビュー表示
-    const capImg = document.getElementById('screen-capture-result');
-    if (capImg) {
-      capImg.src = dataUrl;
-      capImg.classList.remove('hidden');
-    }
+    // 直近1枚を保持（古いものは自動的に上書き）
+    _lastCapture  = { dataUrl, capturedAt: new Date().toISOString() };
+    _lastAnalysis = null; // 解析完了後に setLastAnalysis() で更新
 
     const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
-    console.log('[ScreenShare] captureBase64 —',
-      _canvas.width + 'x' + _canvas.height, '— bytes:', base64.length);
+    console.log('[ScreenShare] captured —', _canvas.width + 'x' + _canvas.height,
+                '— bytes:', base64.length);
     return base64;
   }
 
-  // 「今の画面を取得」ボタン用: キャプチャ + AI解析 + 結果プレビュー表示
-  async function capture() {
-    let base64;
-    try {
-      base64 = captureBase64();
-    } catch (e) {
-      TradeTab.showToast(e.message, 'warn');
-      return;
-    }
-    await _analyze(base64);
+  // DataService → App 経由で解析結果を保存する
+  function setLastAnalysis(analyzed) {
+    _lastAnalysis = analyzed ? { ...analyzed } : null;
   }
 
-  // キャプチャ画像を /api/analyze に送って結果を表示する
-  async function _analyze(base64) {
-    _setAnalyzing(true);
-
-    let result;
-    try {
-      const res = await fetch('/api/analyze', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ imageBase64: base64 }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.message ?? `HTTP ${res.status}`);
-      }
-
-      result = data;
-      console.log('[ScreenShare] analyze result:', result);
-
-    } catch (err) {
-      console.error('[ScreenShare] analyze failed:', err);
-      TradeTab.showToast('AI解析エラー: ' + err.message, 'warn');
-      _showAnalyzeResult(null, err.message);
-      _setAnalyzing(false);
-      return;
-    }
-
-    _showAnalyzeResult(result, null);
-    _setAnalyzing(false);
-    TradeTab.showToast('AI解析 完了', 'info');
+  // 直近キャプチャ情報を返す（確認モーダル用）
+  function getLastCapture() {
+    if (!_lastCapture) return null;
+    return {
+      dataUrl:    _lastCapture.dataUrl,
+      capturedAt: _lastCapture.capturedAt,
+      analyzed:   _lastAnalysis,
+    };
   }
 
-  // 解析中のローディング表示
-  function _setAnalyzing(loading) {
-    const btn = document.getElementById('btn-screen-capture');
-    if (btn) {
-      btn.disabled  = loading;
-      btn.textContent = loading ? '解析中...' : '今の画面を取得';
-    }
-    const resultEl = document.getElementById('analyze-result');
-    if (resultEl && loading) {
-      resultEl.textContent = '解析中...';
-      resultEl.className   = 'analyze-result analyze-loading';
-      resultEl.classList.remove('hidden');
-    }
-  }
-
-  // 解析結果を画面に表示する
-  function _showAnalyzeResult(data, errorMsg) {
-    const el = document.getElementById('analyze-result');
-    if (!el) return;
-
-    if (errorMsg) {
-      el.className   = 'analyze-result analyze-error';
-      el.textContent = '解析失敗: ' + errorMsg;
-    } else {
-      el.className = 'analyze-result analyze-ok';
-      el.textContent = [
-        `現在値  : ${data.currentPrice ?? 'N/A'}`,
-        `VWAP    : ${data.vwap         ?? 'N/A'}`,
-        `5MA     : ${data.ma5          ?? 'N/A'}`,
-        `信頼度  : ${data.confidence   ?? 'N/A'}`,
-      ].join('\n');
-    }
-    el.classList.remove('hidden');
-  }
-
-  // render() 再実行後に UI 状態を復元する
+  // render() 再実行後にボタン状態を復元する
   // _attachEventListeners() の末尾から呼ばれる
   function restoreUI() {
-    const active = _stream !== null;
-    if (active) _setSharing(true);
-    // 非共有中はデフォルト (disabled) のままなので何もしない
+    if (_stream !== null) _setSharing(true);
   }
 
-  return { start, stop, capture, captureBase64, restoreUI };
+  return { start, stop, captureBase64, setLastAnalysis, getLastCapture, restoreUI };
 })();
 
 // ----------------------------------------------------------
@@ -368,6 +289,14 @@ const App = (() => {
       const stockData = await DataService.fetchStockData();
       AppState.updateStockData(stockData);
 
+      // 解析結果を ScreenShare に保存（「取得画像を確認」モーダル用）
+      ScreenShare.setLastAnalysis({
+        currentPrice: stockData.currentPrice,
+        vwap:         stockData.vwap,
+        ma5:          stockData.ma5,
+        confidence:   stockData.confidence,
+      });
+
       // 判断再計算
       const state    = AppState.get();
       const judgment = Logic.computeJudgment(stockData, state.marketData, state.position);
@@ -378,6 +307,32 @@ const App = (() => {
       TradeTab.showToast('銘柄取得エラー: ' + e.message, 'warn');
     } finally {
       _setLoading('btn-stock-update', false);
+      _renderActiveTab();
+    }
+  }
+
+  // ----------------------------------------------------------
+  // 市場情報更新ボタン
+  // 現時点はモック取得のみ。将来的にリアルタイム取得に差し替え可能。
+  // ----------------------------------------------------------
+  async function onMarketUpdate() {
+    _setLoading('btn-market-update', true);
+    try {
+      const marketData = await DataService.fetchMarketData();
+      AppState.updateMarketData(marketData);
+
+      // stockData があれば判断を再計算
+      const state = AppState.get();
+      if (state.stockData) {
+        const judgment = Logic.computeJudgment(state.stockData, marketData, state.position);
+        AppState.updateJudgment(judgment);
+      }
+      TradeTab.showToast('市場情報を更新しました', 'info');
+    } catch (e) {
+      console.error('[App] market update failed', e);
+      TradeTab.showToast('市場情報エラー: ' + e.message, 'warn');
+    } finally {
+      _setLoading('btn-market-update', false);
       _renderActiveTab();
     }
   }
@@ -532,18 +487,22 @@ const App = (() => {
   }
 
   // --- ローディング表示 ---
+  const _btnLabels = {
+    'btn-stock-update':  '銘柄更新',
+    'btn-market-update': '市場情報更新',
+  };
   function _setLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
     btn.disabled    = loading;
-    btn.textContent = loading ? '解析中...' : '銘柄更新';
+    btn.textContent = loading ? '解析中...' : (_btnLabels[btnId] ?? '更新');
   }
 
   // DOMContentLoaded で初期化
   document.addEventListener('DOMContentLoaded', init);
 
   return {
-    onStockUpdate,
+    onStockUpdate, onMarketUpdate,
     onBuy, onSellShort, onAddToPosition,
     onPartialExit, onStopLoss, onFullExit,
     onEditTrade, onDeleteTrade,
