@@ -149,6 +149,7 @@ const App = (() => {
     AppState.updateMarketData(MockData.getMarketData());
     _renderActiveTab();
     _setupTabSwitching();
+    _setupXPost();
     _setupCursorToEnd();
     _setupQtyStepper();
     _setupNumericNormalization();
@@ -245,6 +246,21 @@ const App = (() => {
         el.type = 'number';
       }, { once: true });
     });
+  }
+
+  // ----------------------------------------------------------
+  // X投稿ボタン
+  // タブバーに常駐する静的ボタン。init() で1回だけ登録する。
+  // 中身は次フェーズで実装。
+  // ----------------------------------------------------------
+  function _setupXPost() {
+    const btn = document.getElementById('btn-x-post');
+    if (btn) btn.addEventListener('click', () => onXPost());
+  }
+
+  function onXPost() {
+    // TODO: X投稿パネルの表示 (次フェーズで実装)
+    TradeTab.showToast('X投稿 — 近日実装予定', 'info');
   }
 
   // ----------------------------------------------------------
@@ -496,7 +512,7 @@ const App = (() => {
   document.addEventListener('DOMContentLoaded', init);
 
   return {
-    onStockUpdate, onMarketUpdate,
+    onStockUpdate, onMarketUpdate, onXPost,
     onBuy, onSellShort, onAddToPosition,
     onPartialExit, onStopLoss, onFullExit,
     onEditTrade, onDeleteTrade,

@@ -69,6 +69,25 @@ body {
   border-bottom-color: #1e5fa8;
 }
 
+/* X投稿ボタン — タブとは別のアクションボタンとして右端に配置 */
+.btn-x-post {
+  margin-left: auto;       /* タブ群を左に残して右端へ */
+  align-self: center;      /* タブバーの縦中央に揃える */
+  background: #0f0f0f;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.4px;
+  transition: background 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+.btn-x-post:hover  { background: #333; }
+.btn-x-post:active { opacity: 0.75; }
+
 .tab-content { display: block; }
 .tab-content.hidden { display: none; }
 .hidden { display: none !important; }
