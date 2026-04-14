@@ -256,91 +256,174 @@ const App = (() => {
   // render() のたびに重複登録されない。
   // ----------------------------------------------------------
 
-  // シーン別テンプレート文
-  const X_POST_TEMPLATES = {
-    watching: '三菱重工を監視中。まだエントリーなし。焦らず形を見ます。',
-    entry:    '三菱重工にエントリー。朝の値動きを見ながら無理せず対応します。',
-    profit:   '三菱重工を利確。大きく取りに行きすぎず、まずは取り切る意識でした。',
-    loss:     '三菱重工を損切り。想定と違う動きだったので早めに切りました。',
-    done:     '本日の前場トレード終了。無理な回数は増やさず、ルール通りを優先しました。',
-  };
+  // --- AppState からトレード文脈を取得 ---
+  // AppState が未定義でも落ちないよう全フィールドをオプショナルで取得する
+  function getTradeContext() {
+    const state = AppState.get?.() || {};
+    return {
+      symbol:     (typeof CFG !== 'undefined' ? CFG.SYMBOL_NAME : null) || '三菱重工',
+      price:      state.stockData?.currentPrice ?? null,
+      entryPrice: state.position?.entryPrice    ?? null,
+      pnl:        state.judgment?.unrealizedPnl  ?? null,
+      appStatus:  state.status                  || 'monitoring',
+      lastTrade:  state.session?.trades?.at(-1)  ?? null,
+      time:       new Date(),
+    };
+  }
 
+  // --- 時刻フォーマット (HH:MM) ---
+  function formatTime(date) {
+    const h = date.getHours().toString().padStart(2, '0');
+    const m = date.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
+  }
+
+  // --- 損益フォーマット: +¥1,234 / -¥1,234 / '' ---
+  // 符号と ¥ を一体で返すことで呼び出し側に二重符号が起きないようにする
+  function formatPnL(pnl) {
+    if (pnl === null || pnl === undefined) return '';
+    const abs  = Math.abs(Math.round(pnl)).toLocaleString();
+    const sign = pnl >= 0 ? '+' : '-';
+    return `${sign}¥${abs}`;
+  }
+
+  // --- AppState の status から投稿シーンを自動判定 ---
+  // state.status の実値: monitoring / hold_long / hold_short / partial / closed / day_ended
+  function detectSceneFromState() {
+    const state     = AppState.get?.() || {};
+    const appStatus = state.status || 'monitoring';
+
+    // 終了済み
+    if (appStatus === 'day_ended') return 'done';
+
+    // 保有中 (買い・空売り・一部利確後)
+    if (appStatus === 'hold_long' || appStatus === 'hold_short' || appStatus === 'partial') {
+      return 'entry';
+    }
+
+    // 直近トレードのPnLで利確/損切りを判定 (closed / monitoring)
+    const lastTrade = state.session?.trades?.at(-1);
+    if (lastTrade) {
+      if (lastTrade.totalPnl > 0) return 'profit';
+      if (lastTrade.totalPnl < 0) return 'loss';
+    }
+
+    return 'watching';
+  }
+
+  // --- シーンボタンのアクティブ状態を切り替え ---
+  function setActiveSceneButton(scene) {
+    document.querySelectorAll('.x-scene-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.scene === scene);
+    });
+  }
+
+  // --- イベント登録 (init() から1回だけ呼ぶ) ---
   function _setupXPost() {
-    // --- 開くボタン ---
     const btnOpen = document.getElementById('btn-x-post');
     if (btnOpen) btnOpen.addEventListener('click', () => openXPostPanel());
 
-    // --- 閉じるボタン ---
     const btnClose = document.getElementById('x-post-close');
     if (btnClose) btnClose.addEventListener('click', () => closeXPostPanel());
 
-    // --- シーン選択ボタン群 ---
     const sceneGroup = document.getElementById('x-post-scene');
     if (sceneGroup) {
       sceneGroup.addEventListener('click', (e) => {
         const btn = e.target.closest('.x-scene-btn');
         if (!btn) return;
-        // アクティブ切り替え
-        sceneGroup.querySelectorAll('.x-scene-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        setActiveSceneButton(btn.dataset.scene);
         setXPostTemplate(btn.dataset.scene);
       });
     }
 
-    // --- 「Xで開く」ボタン ---
     const btnIntent = document.getElementById('x-post-open');
     if (btnIntent) btnIntent.addEventListener('click', () => openXIntent());
 
-    // --- 文字数カウンター ---
     const textarea = document.getElementById('x-post-text');
-    if (textarea) {
-      textarea.addEventListener('input', () => _updateCharCount());
-    }
+    if (textarea) textarea.addEventListener('input', () => _updateCharCount());
 
-    // --- パネル外クリックで閉じる ---
+    // パネル外クリックで閉じる
     document.addEventListener('click', (e) => {
-      const panel = document.getElementById('x-post-panel');
+      const panel   = document.getElementById('x-post-panel');
       const openBtn = document.getElementById('btn-x-post');
       if (!panel || panel.classList.contains('hidden')) return;
-      if (!panel.contains(e.target) && e.target !== openBtn) {
-        closeXPostPanel();
-      }
+      if (!panel.contains(e.target) && e.target !== openBtn) closeXPostPanel();
     });
   }
 
-  // パネルを開く
+  // --- パネルを開く ---
+  // AppState からシーンを自動判定してテンプレを反映する
   function openXPostPanel() {
     const panel = document.getElementById('x-post-panel');
     if (!panel) return;
     panel.classList.remove('hidden');
-    // 初期シーンを「監視中」にリセット
-    const sceneGroup = document.getElementById('x-post-scene');
-    if (sceneGroup) {
-      sceneGroup.querySelectorAll('.x-scene-btn').forEach(b => b.classList.remove('active'));
-      const first = sceneGroup.querySelector('[data-scene="watching"]');
-      if (first) first.classList.add('active');
-    }
-    setXPostTemplate('watching');
-    // textarea にフォーカス
-    const textarea = document.getElementById('x-post-text');
-    if (textarea) textarea.focus();
+
+    const scene = detectSceneFromState();
+    setActiveSceneButton(scene);
+    setXPostTemplate(scene);
+
+    document.getElementById('x-post-text')?.focus();
   }
 
-  // パネルを閉じる
+  // --- パネルを閉じる ---
   function closeXPostPanel() {
-    const panel = document.getElementById('x-post-panel');
-    if (panel) panel.classList.add('hidden');
+    document.getElementById('x-post-panel')?.classList.add('hidden');
   }
 
-  // シーンに応じてテンプレートをtextareaに反映
+  // --- シーンに応じて動的な投稿文を生成して textarea に反映 ---
   function setXPostTemplate(scene) {
+    const ctx   = getTradeContext();
+    const time  = formatTime(ctx.time);
+    const price = ctx.price      ? `¥${ctx.price.toLocaleString()}`      : '';
+    const entry = ctx.entryPrice ? `¥${ctx.entryPrice.toLocaleString()}` : '';
+    const pnl   = formatPnL(ctx.pnl); // "+¥1,234" / "-¥1,234" / ""
+
+    let text = '';
+    switch (scene) {
+      case 'watching':
+        text = `${ctx.symbol}を監視中。まだエントリーなし。形を見ながら待機。`;
+        break;
+
+      case 'entry':
+        text = [
+          `${ctx.symbol}にエントリー（${time}）`,
+          entry ? `${entry}付近。` : '。',
+          '無理せず初動だけ狙う。',
+        ].join('');
+        break;
+
+      case 'profit':
+        text = [
+          `${ctx.symbol}を利確（${time}）`,
+          pnl ? `${pnl}。` : '。',
+          '無理せず取り切り。',
+        ].join('');
+        break;
+
+      case 'loss':
+        text = [
+          `${ctx.symbol}を損切り（${time}）`,
+          pnl ? `${pnl}。` : '。',
+          '想定外なので即撤退。',
+        ].join('');
+        break;
+
+      case 'done':
+        text = '前場トレード終了。大きく狙わず、ルール優先で対応しました。';
+        break;
+
+      default:
+        text = '';
+    }
+
     const textarea = document.getElementById('x-post-text');
-    if (!textarea) return;
-    textarea.value = X_POST_TEMPLATES[scene] ?? '';
-    _updateCharCount();
+    if (textarea) {
+      textarea.value = text.trim();
+      _updateCharCount();
+    }
   }
 
-  // twitter/X の intent/tweet を別タブで開く
+  // --- Xの intent/tweet を別タブで開く ---
   function openXIntent() {
     const textarea = document.getElementById('x-post-text');
     if (!textarea) return;
@@ -350,17 +433,15 @@ const App = (() => {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  // 文字数カウント更新 (140字超えで赤表示)
+  // --- 文字数カウント更新 (140字超えで赤表示 / 0字で送信ボタン無効) ---
   function _updateCharCount() {
-    const textarea = document.getElementById('x-post-text');
-    const counter  = document.getElementById('x-post-charcount');
+    const textarea  = document.getElementById('x-post-text');
+    const counter   = document.getElementById('x-post-charcount');
+    const btnIntent = document.getElementById('x-post-open');
     if (!textarea || !counter) return;
     const len = textarea.value.length;
     counter.textContent = len;
-    const wrap = counter.closest('.x-post-charcount');
-    if (wrap) wrap.classList.toggle('over', len > 140);
-    // 「Xで開く」ボタンを 0文字 or 空のとき無効化
-    const btnIntent = document.getElementById('x-post-open');
+    counter.closest('.x-post-charcount')?.classList.toggle('over', len > 140);
     if (btnIntent) btnIntent.disabled = (len === 0);
   }
 
