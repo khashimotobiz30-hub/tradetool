@@ -18,11 +18,61 @@ const DataService = (() => {
   }
 
   // ----------------------------------------------------------
-  // 市場情報取得 — 引き続きモック
-  // judgment ロジックの地合いコメントに使用。
+  // 市場情報取得 — モック (judgment ロジックの地合いコメントに使用)
   // ----------------------------------------------------------
   async function fetchMarketData() {
     return MockData.getMarketData();
+  }
+
+  // ----------------------------------------------------------
+  // AI市場見解取得 (市場情報更新ボタン押下時)
+  //
+  // 画面キャプチャを mode='commentary' で /api/analyze に送り、
+  // 板・チャートを踏まえた短い見解を返す。
+  // 返却: { situation, judgment, reason, entryCondition, confidence, fetchedAt }
+  // ----------------------------------------------------------
+  async function fetchMarketCommentary() {
+    // Step 1: フレームキャプチャ
+    let base64;
+    try {
+      base64 = ScreenShare.captureBase64();
+    } catch (e) {
+      throw new Error(e.message);
+    }
+
+    // Step 2: commentary モードで解析 API に送信
+    let res;
+    try {
+      res = await fetch('/api/analyze', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ imageBase64: base64, mode: 'commentary' }),
+      });
+    } catch (networkErr) {
+      throw new Error(`ネットワークエラー: ${networkErr.message}`);
+    }
+
+    let analyzed;
+    try {
+      analyzed = await res.json();
+    } catch {
+      throw new Error(`解析レスポンスの形式が不正です (HTTP ${res.status})`);
+    }
+
+    if (!res.ok) {
+      throw new Error(analyzed?.message ?? `AI見解エラー (HTTP ${res.status})`);
+    }
+
+    console.log('[DataService] commentary:', analyzed);
+
+    return {
+      situation:      analyzed.situation,
+      judgment:       analyzed.judgment,      // 'long' | 'short' | 'pass'
+      reason:         analyzed.reason,
+      entryCondition: analyzed.entryCondition,
+      confidence:     analyzed.confidence,
+      fetchedAt:      new Date().toISOString(),
+    };
   }
 
   // ----------------------------------------------------------
@@ -109,5 +159,5 @@ const DataService = (() => {
     };
   }
 
-  return { fetchStockData, fetchMarketData };
+  return { fetchStockData, fetchMarketData, fetchMarketCommentary };
 })();

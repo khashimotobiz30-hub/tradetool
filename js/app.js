@@ -313,24 +313,18 @@ const App = (() => {
 
   // ----------------------------------------------------------
   // 市場情報更新ボタン
-  // 現時点はモック取得のみ。将来的にリアルタイム取得に差し替え可能。
+  // 画面共有の現在フレームを OpenAI に送り、板・チャートを踏まえた
+  // AI見解（現状/判断/理由/エントリー条件）を取得して表示する。
   // ----------------------------------------------------------
   async function onMarketUpdate() {
     _setLoading('btn-market-update', true);
     try {
-      const marketData = await DataService.fetchMarketData();
-      AppState.updateMarketData(marketData);
-
-      // stockData があれば判断を再計算
-      const state = AppState.get();
-      if (state.stockData) {
-        const judgment = Logic.computeJudgment(state.stockData, marketData, state.position);
-        AppState.updateJudgment(judgment);
-      }
-      TradeTab.showToast('市場情報を更新しました', 'info');
+      const commentary = await DataService.fetchMarketCommentary();
+      AppState.updateAiCommentary(commentary);
+      TradeTab.showToast('AI見解を取得しました', 'info');
     } catch (e) {
-      console.error('[App] market update failed', e);
-      TradeTab.showToast('市場情報エラー: ' + e.message, 'warn');
+      console.error('[App] market commentary failed', e);
+      TradeTab.showToast('AI見解エラー: ' + e.message, 'warn');
     } finally {
       _setLoading('btn-market-update', false);
       _renderActiveTab();

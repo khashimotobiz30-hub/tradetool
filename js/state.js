@@ -45,6 +45,9 @@ const AppState = (() => {
       stockData:   null,
       marketData:  null,
 
+      // AI市場見解 (市場情報更新ボタン押下時に更新)
+      aiCommentary: null,
+
       // 最新判断
       judgment: null,
 
@@ -118,6 +121,12 @@ const AppState = (() => {
   function updateJudgment(judgment) {
     _state.judgment = judgment;
     // 判断はストレージ保存不要 (再計算できるため)
+  }
+
+  // --- AI市場見解更新 ---
+  // ストレージ保存不要 (再取得可能)
+  function updateAiCommentary(commentary) {
+    _state.aiCommentary = commentary;
   }
 
   // --- 購入 (ロング建て) ---
@@ -548,7 +557,7 @@ const AppState = (() => {
   return {
     init, get,
     markSessionStart,
-    updateStockData, updateMarketData, updateJudgment,
+    updateStockData, updateMarketData, updateJudgment, updateAiCommentary,
     openLong, openShort, addToPosition,
     partialExit, stopLoss, fullExit,
     editTrade, deleteTrade,

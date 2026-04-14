@@ -96,6 +96,7 @@ const TradeTab = (() => {
     root.innerHTML = `
       ${_renderUpdateArea(stockData)}
       ${_renderJudgmentPanel(status, judgment, stockData, position)}
+      ${_renderAiCommentaryPanel(state.aiCommentary)}
       ${_renderCommentPanel(judgment)}
       ${_renderOperationPanel(status, stockData, position)}
       ${_renderTradeList(session)}
@@ -304,6 +305,47 @@ const TradeTab = (() => {
         <span class="computed-at">更新時点: ${fmtTime(judgment.computedAt)}</span>
       </div>
       ${content}
+    </div>`;
+  }
+
+  // --- AI市場見解パネル ---
+  // DataService.fetchMarketCommentary() の結果を表示する。
+  // データなし = 「市場情報更新」未押下 → 何も表示しない。
+  function _renderAiCommentaryPanel(commentary) {
+    if (!commentary) return '';
+
+    const conf = commentary.confidence ?? 'low';
+    const confLabel = { high: '信頼度: 高', medium: '信頼度: 中', low: '信頼度: 低' }[conf] ?? conf;
+
+    const judgeMap = {
+      long:  { label: 'ロング待ち', cls: 'ai-judge-long'  },
+      short: { label: 'ショート待ち', cls: 'ai-judge-short' },
+      pass:  { label: '見送り',   cls: 'ai-judge-pass'  },
+    };
+    const judge = judgeMap[commentary.judgment] ?? judgeMap.pass;
+
+    return `
+    <div class="card ai-commentary-panel">
+      <div class="ai-commentary-header">
+        <span class="ai-commentary-title">🤖 AI市場見解</span>
+        <span class="ai-judge-badge ${judge.cls}">${judge.label}</span>
+        <span class="badge badge-conf-${conf}">${confLabel}</span>
+        <span class="ai-commentary-time">${fmtTime(commentary.fetchedAt)}</span>
+      </div>
+      <div class="ai-commentary-body">
+        <div class="ai-row">
+          <span class="ai-label">現状</span>
+          <span class="ai-text">${commentary.situation ?? '--'}</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-label">理由</span>
+          <span class="ai-text">${commentary.reason ?? '--'}</span>
+        </div>
+        <div class="ai-row">
+          <span class="ai-label ai-label-entry">条件</span>
+          <span class="ai-text ai-text-entry">${commentary.entryCondition ?? '--'}</span>
+        </div>
+      </div>
     </div>`;
   }
 
