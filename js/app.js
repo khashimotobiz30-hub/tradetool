@@ -224,6 +224,8 @@ const App = (() => {
   // ----------------------------------------------------------
   function init() {
     AppState.init();
+    // 市場情報はモックで初期化（judgment ロジックの地合いコメントに使用）
+    AppState.updateMarketData(MockData.getMarketData());
     _renderActiveTab();
     _setupTabSwitching();
     _setupCursorToEnd();
@@ -380,32 +382,6 @@ const App = (() => {
     }
   }
 
-  // ----------------------------------------------------------
-  // 市場情報更新ボタン
-  // ----------------------------------------------------------
-  async function onMarketUpdate() {
-    AppState.markSessionStart();
-    _setLoading('btn-market-update', true);
-
-    try {
-      const marketData = await DataService.fetchMarketData();
-      AppState.updateMarketData(marketData);
-
-      // 判断再計算 (銘柄データがあれば)
-      const state = AppState.get();
-      if (state.stockData) {
-        const judgment = Logic.computeJudgment(state.stockData, marketData, state.position);
-        AppState.updateJudgment(judgment);
-      }
-
-    } catch (e) {
-      console.error('[App] market update failed', e);
-      TradeTab.showToast('市場情報エラー: ' + e.message, 'warn');
-    } finally {
-      _setLoading('btn-market-update', false);
-      _renderActiveTab();
-    }
-  }
 
   // ----------------------------------------------------------
   // 購入 (ロング)
@@ -559,15 +535,15 @@ const App = (() => {
   function _setLoading(btnId, loading) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
-    btn.disabled = loading;
-    btn.textContent = loading ? '取得中...' : (btnId === 'btn-stock-update' ? '銘柄更新' : '市場情報更新');
+    btn.disabled    = loading;
+    btn.textContent = loading ? '解析中...' : '銘柄更新';
   }
 
   // DOMContentLoaded で初期化
   document.addEventListener('DOMContentLoaded', init);
 
   return {
-    onStockUpdate, onMarketUpdate,
+    onStockUpdate,
     onBuy, onSellShort, onAddToPosition,
     onPartialExit, onStopLoss, onFullExit,
     onEditTrade, onDeleteTrade,

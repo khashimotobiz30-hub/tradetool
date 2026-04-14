@@ -28,7 +28,6 @@ const MIME = {
 };
 
 // --- API ハンドラを読み込む ---
-const stockHandler   = require('./api/stock');
 const analyzeHandler = require('./api/analyze');
 
 // --- Vercel 風の res ラッパー ---
@@ -90,19 +89,6 @@ const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   console.log(`[${new Date().toLocaleTimeString('ja-JP')}] ${req.method} ${url}`);
 
-  // /api/stock ルーティング
-  if (url === '/api/stock') {
-    const vercelRes = makeVercelRes(res);
-    try {
-      await stockHandler({ method: req.method, url: req.url }, vercelRes);
-    } catch (err) {
-      console.error('[dev-server] unhandled error:', err.message);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'InternalServerError', message: err.message }));
-    }
-    return;
-  }
-
   // /api/analyze ルーティング (POST + JSON ボディパース)
   if (url === '/api/analyze') {
     const vercelRes = makeVercelRes(res);
@@ -123,6 +109,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n🚀 dev-server 起動 → http://localhost:${PORT}`);
-  console.log(`   /api/stock  → api/stock.js (Yahoo Finance)`);
-  console.log(`   その他      → 静的ファイル配信\n`);
+  console.log(`   /api/analyze → api/analyze.js (OpenAI 画面解析)`);
+  console.log(`   その他       → 静的ファイル配信\n`);
 });

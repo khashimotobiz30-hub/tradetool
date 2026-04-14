@@ -631,6 +631,26 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
 .badge-old   { background: #fce4e4; color: #922b21; }
 .badge-pass  { background: #f0f0f0; color: #666; }
 
+/* 画面共有由来バッジ */
+.badge-conf-high   { background: #d5f0e4; color: #1b5e20; }
+.badge-conf-medium { background: #fff3cd; color: #7d5a00; }
+.badge-conf-low    { background: #fce4e4; color: #7d0000; }
+.source-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #1e5fa8;
+  background: #e8f0fc;
+  border: 1px solid #c5d8f8;
+  border-radius: 3px;
+  padding: 1px 6px;
+  vertical-align: middle;
+}
+.share-guidance {
+  font-size: 12px;
+  color: #888;
+  padding: 6px 0 2px;
+}
+
 /* ============================================================
    カレンダー
    ============================================================ */

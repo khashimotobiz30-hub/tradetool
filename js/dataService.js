@@ -1,87 +1,43 @@
 // ============================================================
 // dataService.js — データ取得の抽象層
 //
-// ★ 取得元の切り替えフラグ (優先順):
-//   1. USE_MOCK = true          → モック (開発・オフライン)
-//   2. USE_SCREEN_CAPTURE = true → 画面キャプチャ + OpenAI 解析
-//   3. どちらも false           → Yahoo Finance (api/stock.js 経由)
+// 取得元: 画面共有キャプチャ → POST /api/analyze → OpenAI 解析
+//
+// stockData の取得は fetchStockData() のみ。
+// 画面共有が開始されていない場合は Error をスローする。
 // ============================================================
 
 const DataService = (() => {
 
-  // ★ true  = モック (開発・オフライン時)
-  // ★ false = 実データ (下の USE_SCREEN_CAPTURE で取得元を選択)
-  const USE_MOCK = false;
-
-  // ★ true  = 銘柄更新ボタン押下時に画面キャプチャ + OpenAI 解析を使う
-  // ★ false = Yahoo Finance (USE_MOCK が false の場合のデフォルト)
-  // ※ 画面共有を開始してから「銘柄更新」を押すこと
-  const USE_SCREEN_CAPTURE = false;
-
   // ----------------------------------------------------------
-  // 銘柄データ取得 (高頻度: 銘柄更新ボタン押下時)
+  // 銘柄データ取得 (銘柄更新ボタン押下時)
+  // 画面共有が未開始なら Error をスロー。
   // ----------------------------------------------------------
   async function fetchStockData() {
-    if (USE_MOCK)           return MockData.getStockData();
-    if (USE_SCREEN_CAPTURE) return await fetchScreenCaptureData();
-    return await fetchRealStockData();
+    return await _fetchScreenCaptureData();
   }
 
   // ----------------------------------------------------------
-  // 市場・前日情報取得 (低頻度: 市場情報更新ボタン押下時)
-  // 一次版: 実装待ちのためモック継続
+  // 市場情報取得 — 引き続きモック
+  // judgment ロジックの地合いコメントに使用。
   // ----------------------------------------------------------
   async function fetchMarketData() {
     return MockData.getMarketData();
   }
 
   // ----------------------------------------------------------
-  // 銘柄データ: Yahoo Finance (api/stock.js 経由)
+  // 画面キャプチャ + OpenAI 解析 → stockData 形式に整形
   // ----------------------------------------------------------
-  async function fetchRealStockData() {
-    let res;
-    try {
-      res = await fetch('/api/stock');
-    } catch (networkErr) {
-      throw new Error(
-        `ネットワークエラー: サーバーに接続できません (${networkErr.message})`,
-      );
-    }
-
-    let data;
-    try {
-      data = await res.json();
-    } catch {
-      throw new Error(
-        `サーバーエラー: レスポンスが不正な形式です (HTTP ${res.status})`,
-      );
-    }
-
-    if (!res.ok) {
-      throw new Error(data?.message ?? `株価取得エラー (HTTP ${res.status})`);
-    }
-
-    _fillFallbacks(data);
-    return data;
-  }
-
-  // ----------------------------------------------------------
-  // 銘柄データ: 画面キャプチャ + OpenAI 解析 (USE_SCREEN_CAPTURE = true 時)
-  //
-  // 1. ScreenShare.captureBase64() でフレームを取得
-  // 2. POST /api/analyze で OpenAI に送信
-  // 3. 返却 JSON を既存 stockData 形式に整形して返す
-  // ----------------------------------------------------------
-  async function fetchScreenCaptureData() {
+  async function _fetchScreenCaptureData() {
     // Step 1: フレームキャプチャ
     // ScreenShare は app.js (グローバル) に定義済み。
-    // dataService.js のロードより後に app.js がロードされるが、
-    // この関数はボタン押下時 (全スクリプトロード後) に呼ばれるため問題ない。
+    // この関数はボタン押下時 (全スクリプトロード後) に呼ばれる。
     let base64;
     try {
       base64 = ScreenShare.captureBase64();
     } catch (e) {
-      throw new Error(e.message); // 「画面共有が開始されていません」等
+      // 「画面共有が開始されていません」等をそのまま上位に伝える
+      throw new Error(e.message);
     }
 
     // Step 2: OpenAI 解析 API に送信
@@ -107,23 +63,22 @@ const DataService = (() => {
       throw new Error(analyzed?.message ?? `画面解析エラー (HTTP ${res.status})`);
     }
 
-    console.log('[DataService] screen capture analyzed:', analyzed);
+    console.log('[DataService] analyzed:', analyzed);
 
     // Step 3: stockData 形式に整形
-    return _shapeScreenCaptureData(analyzed);
+    return _shape(analyzed);
   }
 
   // ----------------------------------------------------------
-  // OpenAI 解析結果 → 既存 stockData 形式に整形
+  // OpenAI 解析結果 → stockData 形式
   //
-  // candles は空配列のため _fillFallbacks では補完されない。
-  // currentPrice を基準に recentHigh/Low を推定し、
-  // logic.js が NaN を出さないよう最低限の値を埋める。
+  // candles は空配列。recentHigh/Low は currentPrice を基準に
+  // 推定補完し、logic.js が NaN を出さないようにする。
   // ----------------------------------------------------------
-  function _shapeScreenCaptureData(analyzed) {
+  function _shape(analyzed) {
     const cp = analyzed.currentPrice ?? null;
 
-    const data = {
+    return {
       symbol: CFG.SYMBOL,
       name:   CFG.SYMBOL_NAME,
 
@@ -134,54 +89,24 @@ const DataService = (() => {
       dayLow:       null,
       volume:       null,
 
-      vwap: analyzed.vwap ?? (cp ?? null),
-      ma5:  analyzed.ma5  ?? (cp ?? null),
+      // OpenAI が読み取った値。取れなければ currentPrice で代替
+      vwap: analyzed.vwap ?? cp,
+      ma5:  analyzed.ma5  ?? cp,
 
-      // candles は空配列 (_fillFallbacks はスキップされる)
-      candles: [],
-
-      // recentHigh/Low: currentPrice ± 小幅 drift で推定
-      // 0.3% ≈ 5本分・0.6% ≈ 15本分のレンジを仮定
+      // candles なし → _fillFallbacks は走らないため、ここで補完
+      // currentPrice ±0.3% (5本相当) / ±0.6% (15本相当) を仮定
       recentHigh5:  cp ? Math.round(cp * 1.003) : null,
       recentLow5:   cp ? Math.round(cp * 0.997) : null,
       recentHigh15: cp ? Math.round(cp * 1.006) : null,
       recentLow15:  cp ? Math.round(cp * 0.994) : null,
 
-      fetchedAt: new Date().toISOString(),
-      prevHigh:  null,
-      prevLow:   null,
+      candles:    [],
+      fetchedAt:  new Date().toISOString(),
+      confidence: analyzed.confidence ?? null,
+
+      prevHigh: null,
+      prevLow:  null,
     };
-
-    return data;
-  }
-
-  // ----------------------------------------------------------
-  // null 補完: 足数不足時の graceful degradation
-  // candles が存在する限り、利用可能な本数で計算する。
-  // (USE_SCREEN_CAPTURE 時は candles = [] なのでスキップされる)
-  // ----------------------------------------------------------
-  function _fillFallbacks(data) {
-    const c = data.candles;
-    if (!c || c.length === 0) return;
-    const n = c.length;
-
-    if (data.recentHigh5 === null) {
-      data.recentHigh5 = Math.max(...c.slice(-Math.min(5, n)).map(x => x.high));
-    }
-    if (data.recentLow5 === null) {
-      data.recentLow5 = Math.min(...c.slice(-Math.min(5, n)).map(x => x.low));
-    }
-    if (data.recentHigh15 === null) {
-      data.recentHigh15 = Math.max(...c.slice(-Math.min(15, n)).map(x => x.high));
-    }
-    if (data.recentLow15 === null) {
-      data.recentLow15 = Math.min(...c.slice(-Math.min(15, n)).map(x => x.low));
-    }
-    if (data.ma5 === null) {
-      const slice = c.slice(-Math.min(5, n));
-      const avg   = slice.reduce((s, x) => s + x.close, 0) / slice.length;
-      data.ma5    = Math.round(avg * 10) / 10;
-    }
   }
 
   return { fetchStockData, fetchMarketData };

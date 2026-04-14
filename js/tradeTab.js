@@ -94,7 +94,7 @@ const TradeTab = (() => {
     if (!root) return;
 
     root.innerHTML = `
-      ${_renderUpdateArea(stockData, marketData)}
+      ${_renderUpdateArea(stockData)}
       ${_renderJudgmentPanel(status, judgment, stockData, position)}
       ${_renderCommentPanel(judgment)}
       ${_renderOperationPanel(status, stockData, position)}
@@ -107,20 +107,13 @@ const TradeTab = (() => {
   }
 
   // --- 更新エリア ---
-  function _renderUpdateArea(stockData, marketData) {
-    const stockTime   = stockData   ? fmtTime(stockData.fetchedAt)   : '--:--:--';
-    const marketTime  = marketData  ? fmtTime(marketData.fetchedAt)  : '--:--:--';
-    const marketFresh = marketData  ? freshnessTag(marketData.fetchedAt) : '<span class="badge badge-old">未取得</span>';
-
-    const price = stockData ? fmtPrc(stockData.currentPrice) : '--';
-    const chg   = stockData
-      ? (() => {
-          const d = stockData.currentPrice - stockData.prevClose;
-          const r = ((d / stockData.prevClose) * 100).toFixed(2);
-          const cls = d >= 0 ? 'pos' : 'neg';
-          return `<span class="${cls}">${d >= 0 ? '+' : ''}¥${d.toFixed(1)} (${d >= 0 ? '+' : ''}${r}%)</span>`;
-        })()
-      : '--';
+  function _renderUpdateArea(stockData) {
+    const stockTime  = stockData ? fmtTime(stockData.fetchedAt) : '--:--:--';
+    const price      = stockData ? fmtPrc(stockData.currentPrice) : '--';
+    const confidence = stockData?.confidence;
+    const confBadge  = confidence
+      ? `<span class="badge badge-conf-${confidence}">${{ high: '信頼度: 高', medium: '信頼度: 中', low: '信頼度: 低' }[confidence] ?? confidence}</span>`
+      : '';
 
     return `
     <div class="update-area card">
@@ -128,36 +121,23 @@ const TradeTab = (() => {
         <div class="price-display">
           <span class="symbol-name">${CFG.SYMBOL_NAME}（${CFG.SYMBOL}）</span>
           <span class="current-price">${price}</span>
-          <span class="price-change">${chg}</span>
+          <span class="source-tag">画面共有</span>
         </div>
         <div class="update-buttons">
           <div class="update-btn-group">
             <button id="btn-stock-update" class="btn btn-primary">銘柄更新</button>
-            <span class="update-time">最終: <strong>${stockTime}</strong></span>
-          </div>
-          <div class="update-btn-group">
-            <button id="btn-market-update" class="btn btn-secondary">市場情報更新</button>
-            <span class="update-time">最終: <strong>${marketTime}</strong> ${marketFresh}</span>
+            <span class="update-time">最終: <strong>${stockTime}</strong> ${confBadge}</span>
           </div>
         </div>
       </div>
       ${stockData ? `
       <div class="stock-sub-info">
-        <span>始値: ${fmtPrc(stockData.openPrice)}</span>
-        <span>高値: ${fmtPrc(stockData.dayHigh)}</span>
-        <span>安値: ${fmtPrc(stockData.dayLow)}</span>
-        <span>出来高: ${fmtNum(stockData.volume)}</span>
         <span>VWAP: ${fmtPrc(stockData.vwap)}</span>
         <span>5MA: ${fmtPrc(stockData.ma5)}</span>
-      </div>` : ''}
-      ${marketData ? `
-      <div class="market-sub-info">
-        <span>日経: ${fmtNum(marketData.nikkei.price)} (${marketData.nikkei.changeRate >= 0 ? '+' : ''}${marketData.nikkei.changeRate}%)</span>
-        <span>TOPIX: ${fmtNum(marketData.topix.price)}</span>
-        <span>$/¥: ${marketData.usdJpy.price}</span>
-        <span>セクター: ${marketData.sectorStrength}</span>
-        <span class="market-cond cond-${marketData.marketCondition}">地合い: ${marketData.marketCondition}</span>
-      </div>` : ''}
+      </div>` : `
+      <div class="share-guidance">
+        画面共有を開始してから「銘柄更新」を押すと解析が始まります
+      </div>`}
       <div class="screen-share-bar">
         <div class="screen-share-controls">
           <span class="screen-share-label">画面共有</span>
@@ -178,7 +158,7 @@ const TradeTab = (() => {
   function _renderJudgmentPanel(status, judgment, stockData, position) {
     if (!judgment) {
       return `<div class="card judgment-panel">
-        <div class="no-data-msg">銘柄更新ボタンを押して判断を取得してください</div>
+        <div class="no-data-msg">画面共有を開始してから「銘柄更新」を押すと判断が表示されます</div>
       </div>`;
     }
 
@@ -595,10 +575,6 @@ const TradeTab = (() => {
     // 銘柄更新
     const btnStock = document.getElementById('btn-stock-update');
     if (btnStock) btnStock.addEventListener('click', () => App.onStockUpdate());
-
-    // 市場情報更新
-    const btnMarket = document.getElementById('btn-market-update');
-    if (btnMarket) btnMarket.addEventListener('click', () => App.onMarketUpdate());
 
     // 画面共有
     const btnScreenStart = document.getElementById('btn-screen-start');
