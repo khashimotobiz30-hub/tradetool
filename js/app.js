@@ -71,17 +71,18 @@ const ScreenShare = (() => {
     _setSharing(false);
   }
 
-  // フレームキャプチャ → base64 JPEG を取得し、そのまま AI 解析へ送る
-  async function capture() {
+  // 【公開】フレームをキャプチャして base64 文字列を返す
+  // DataService.fetchScreenCaptureData() からも呼ばれる純粋なキャプチャ関数。
+  // UI 更新（プレビュー表示）のみ行い、解析は行わない。
+  // ストリームが未開始の場合は Error をスロー。
+  function captureBase64() {
     _ensureVideo();
     _ensureCanvas();
 
     if (!_stream || !_video || _video.readyState < 2) {
-      TradeTab.showToast('先に画面共有を開始してください', 'warn');
-      return;
+      throw new Error('画面共有が開始されていません。先に「共有開始」を押してください。');
     }
 
-    // video の実解像度に合わせてキャンバスサイズを設定
     _canvas.width  = _video.videoWidth  || 1280;
     _canvas.height = _video.videoHeight || 720;
 
@@ -97,13 +98,21 @@ const ScreenShare = (() => {
       capImg.classList.remove('hidden');
     }
 
-    console.log('[ScreenShare] capture OK —',
-      _canvas.width + 'x' + _canvas.height,
-      '— dataUrl bytes:', dataUrl.length
-    );
-
-    // キャプチャ直後に自動で AI 解析を実行
     const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    console.log('[ScreenShare] captureBase64 —',
+      _canvas.width + 'x' + _canvas.height, '— bytes:', base64.length);
+    return base64;
+  }
+
+  // 「今の画面を取得」ボタン用: キャプチャ + AI解析 + 結果プレビュー表示
+  async function capture() {
+    let base64;
+    try {
+      base64 = captureBase64();
+    } catch (e) {
+      TradeTab.showToast(e.message, 'warn');
+      return;
+    }
     await _analyze(base64);
   }
 
@@ -184,7 +193,7 @@ const ScreenShare = (() => {
     // 非共有中はデフォルト (disabled) のままなので何もしない
   }
 
-  return { start, stop, capture, restoreUI };
+  return { start, stop, capture, captureBase64, restoreUI };
 })();
 
 // ----------------------------------------------------------
