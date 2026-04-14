@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>三菱重工（7011）デイトレ判断補助ツール</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ヘッダー -->
+  <header class="app-header">
+    <div>
+      <h1>三菱重工業（7011）デイトレ判断補助ツール</h1>
+    </div>
+    <div class="header-sub" id="header-date"></div>
+  </header>
+
+  <!-- タブバー -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="trade">トレード</button>
+    <button class="tab-btn" data-tab="calendar">カレンダー</button>
+  </div>
+
+  <!-- トレードタブ -->
+  <div class="tab-content" data-tab="trade">
+    <div id="trade-tab-content">
+      <!-- tradeTab.js が render() で描画 -->
+    </div>
+  </div>
+
+  <!-- カレンダータブ -->
+  <div class="tab-content hidden" data-tab="calendar">
+    <div id="calendar-tab-content">
+      <!-- calendarTab.js が render() で描画 -->
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- ============================================================
+  JS ロード順序 (依存関係に注意)
+  1. config.js     — CFG 定数 (他の全ファイルが参照)
+  2. mockData.js   — MockData (dataService が参照)
+  3. dataService.js — DataService (app が参照)
+  4. logic.js      — Logic (app が参照)
+  5. storage.js    — Storage (state が参照)
+  6. state.js      — AppState (app が参照)
+  7. tradeTab.js   — TradeTab (app が参照)
+  8. calendarTab.js — CalendarTab (app が参照)
+  9. app.js        — App (DOMContentLoaded で初期化)
+============================================================ -->
+<script src="js/config.js"></script>
+<script src="js/mockData.js"></script>
+<script src="js/dataService.js"></script>
+<script src="js/logic.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/state.js"></script>
+<script src="js/tradeTab.js"></script>
+<script src="js/calendarTab.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  // ヘッダーに今日の日付を表示
+  document.getElementById('header-date').textContent =
+    new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
+</script>
+</body>
+</html>
