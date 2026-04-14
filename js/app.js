@@ -249,19 +249,123 @@ const App = (() => {
   }
 
   // ----------------------------------------------------------
-  // X投稿ボタン
-  // タブバーに常駐する静的ボタン。init() で1回だけ登録する。
-  // 中身は次フェーズで実装。
+  // X投稿パネル
+  //
+  // パネルは index.html に静的 DOM として存在し、
+  // init() で1回だけイベントを登録する。
+  // render() のたびに重複登録されない。
   // ----------------------------------------------------------
+
+  // シーン別テンプレート文
+  const X_POST_TEMPLATES = {
+    watching: '三菱重工を監視中。まだエントリーなし。焦らず形を見ます。',
+    entry:    '三菱重工にエントリー。朝の値動きを見ながら無理せず対応します。',
+    profit:   '三菱重工を利確。大きく取りに行きすぎず、まずは取り切る意識でした。',
+    loss:     '三菱重工を損切り。想定と違う動きだったので早めに切りました。',
+    done:     '本日の前場トレード終了。無理な回数は増やさず、ルール通りを優先しました。',
+  };
+
   function _setupXPost() {
-    const btn = document.getElementById('btn-x-post');
-    if (btn) btn.addEventListener('click', () => onXPost());
+    // --- 開くボタン ---
+    const btnOpen = document.getElementById('btn-x-post');
+    if (btnOpen) btnOpen.addEventListener('click', () => openXPostPanel());
+
+    // --- 閉じるボタン ---
+    const btnClose = document.getElementById('x-post-close');
+    if (btnClose) btnClose.addEventListener('click', () => closeXPostPanel());
+
+    // --- シーン選択ボタン群 ---
+    const sceneGroup = document.getElementById('x-post-scene');
+    if (sceneGroup) {
+      sceneGroup.addEventListener('click', (e) => {
+        const btn = e.target.closest('.x-scene-btn');
+        if (!btn) return;
+        // アクティブ切り替え
+        sceneGroup.querySelectorAll('.x-scene-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        setXPostTemplate(btn.dataset.scene);
+      });
+    }
+
+    // --- 「Xで開く」ボタン ---
+    const btnIntent = document.getElementById('x-post-open');
+    if (btnIntent) btnIntent.addEventListener('click', () => openXIntent());
+
+    // --- 文字数カウンター ---
+    const textarea = document.getElementById('x-post-text');
+    if (textarea) {
+      textarea.addEventListener('input', () => _updateCharCount());
+    }
+
+    // --- パネル外クリックで閉じる ---
+    document.addEventListener('click', (e) => {
+      const panel = document.getElementById('x-post-panel');
+      const openBtn = document.getElementById('btn-x-post');
+      if (!panel || panel.classList.contains('hidden')) return;
+      if (!panel.contains(e.target) && e.target !== openBtn) {
+        closeXPostPanel();
+      }
+    });
   }
 
-  function onXPost() {
-    // TODO: X投稿パネルの表示 (次フェーズで実装)
-    TradeTab.showToast('X投稿 — 近日実装予定', 'info');
+  // パネルを開く
+  function openXPostPanel() {
+    const panel = document.getElementById('x-post-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    // 初期シーンを「監視中」にリセット
+    const sceneGroup = document.getElementById('x-post-scene');
+    if (sceneGroup) {
+      sceneGroup.querySelectorAll('.x-scene-btn').forEach(b => b.classList.remove('active'));
+      const first = sceneGroup.querySelector('[data-scene="watching"]');
+      if (first) first.classList.add('active');
+    }
+    setXPostTemplate('watching');
+    // textarea にフォーカス
+    const textarea = document.getElementById('x-post-text');
+    if (textarea) textarea.focus();
   }
+
+  // パネルを閉じる
+  function closeXPostPanel() {
+    const panel = document.getElementById('x-post-panel');
+    if (panel) panel.classList.add('hidden');
+  }
+
+  // シーンに応じてテンプレートをtextareaに反映
+  function setXPostTemplate(scene) {
+    const textarea = document.getElementById('x-post-text');
+    if (!textarea) return;
+    textarea.value = X_POST_TEMPLATES[scene] ?? '';
+    _updateCharCount();
+  }
+
+  // twitter/X の intent/tweet を別タブで開く
+  function openXIntent() {
+    const textarea = document.getElementById('x-post-text');
+    if (!textarea) return;
+    const text = textarea.value.trim();
+    if (!text) return;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  // 文字数カウント更新 (140字超えで赤表示)
+  function _updateCharCount() {
+    const textarea = document.getElementById('x-post-text');
+    const counter  = document.getElementById('x-post-charcount');
+    if (!textarea || !counter) return;
+    const len = textarea.value.length;
+    counter.textContent = len;
+    const wrap = counter.closest('.x-post-charcount');
+    if (wrap) wrap.classList.toggle('over', len > 140);
+    // 「Xで開く」ボタンを 0文字 or 空のとき無効化
+    const btnIntent = document.getElementById('x-post-open');
+    if (btnIntent) btnIntent.disabled = (len === 0);
+  }
+
+  // 外部から onXPost() として呼べるよう残す（return 文で公開）
+  function onXPost() { openXPostPanel(); }
 
   // ----------------------------------------------------------
   // タブ切り替え

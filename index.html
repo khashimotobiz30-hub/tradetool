@@ -41,6 +41,36 @@
 </div><!-- /#app -->
 
 <!-- ============================================================
+  X投稿パネル (静的DOM / 常にbody直下に配置、表示/非表示はJSで制御)
+============================================================ -->
+<div id="x-post-panel" class="x-post-panel hidden" role="dialog" aria-label="X投稿を作成">
+
+  <div class="x-post-header">
+    <span class="x-post-title">𝕏 投稿を作成</span>
+    <button id="x-post-close" class="x-post-close-btn" aria-label="閉じる">✕</button>
+  </div>
+
+  <div class="x-post-scene-label">シーン</div>
+  <div class="x-post-scene-group" id="x-post-scene" role="group" aria-label="投稿シーン選択">
+    <button class="x-scene-btn active" data-scene="watching">監視中</button>
+    <button class="x-scene-btn"        data-scene="entry">エントリー</button>
+    <button class="x-scene-btn"        data-scene="profit">利確</button>
+    <button class="x-scene-btn"        data-scene="loss">損切り</button>
+    <button class="x-scene-btn"        data-scene="done">トレード終了</button>
+  </div>
+
+  <textarea id="x-post-text" class="x-post-textarea" rows="5" placeholder="投稿文をここに入力..."></textarea>
+
+  <div class="x-post-footer">
+    <span class="x-post-charcount"><span id="x-post-charcount">0</span> / 140</span>
+    <div class="x-post-actions">
+      <button id="x-post-open" class="btn-x-intent">𝕏 で開く</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================
   JS ロード順序 (依存関係に注意)
   1. config.js     — CFG 定数 (他の全ファイルが参照)
   2. mockData.js   — MockData (dataService が参照)

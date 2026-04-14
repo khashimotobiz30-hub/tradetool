@@ -88,6 +88,142 @@ body {
 .btn-x-post:hover  { background: #333; }
 .btn-x-post:active { opacity: 0.75; }
 
+/* ============================================================
+   X投稿パネル
+   ============================================================ */
+
+/* フローティングパネル本体 */
+.x-post-panel {
+  position: fixed;
+  top: 54px;          /* タブバー直下に自然に重なる位置 */
+  right: 12px;
+  width: min(360px, calc(100vw - 24px));
+  background: #fff;
+  border: 1px solid #dde2e8;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+/* hidden との共存: .hidden は display:none !important なので非表示に使う */
+
+/* ヘッダー行 */
+.x-post-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.x-post-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f0f0f;
+  letter-spacing: 0.3px;
+}
+.x-post-close-btn {
+  background: none;
+  border: none;
+  font-size: 15px;
+  color: #999;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+.x-post-close-btn:hover { background: #f0f0f0; color: #333; }
+
+/* シーン選択 */
+.x-post-scene-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: -4px;
+}
+.x-post-scene-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.x-scene-btn {
+  background: #f3f4f6;
+  border: 1px solid #e0e2e6;
+  border-radius: 14px;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #444;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.x-scene-btn:hover  { background: #e8eaed; border-color: #c8cacd; }
+.x-scene-btn.active {
+  background: #0f0f0f;
+  border-color: #0f0f0f;
+  color: #fff;
+}
+
+/* テキストエリア */
+.x-post-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 110px;
+  padding: 10px 12px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #1a1a1a;
+  resize: vertical;
+  font-family: inherit;
+  background: #fafbfc;
+  transition: border-color 0.15s, background 0.15s;
+}
+.x-post-textarea:focus {
+  outline: none;
+  border-color: #1e5fa8;
+  background: #fff;
+}
+
+/* フッター: 文字数 + 開くボタン */
+.x-post-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.x-post-charcount {
+  font-size: 11px;
+  color: #aaa;
+}
+.x-post-charcount.over { color: #c0392b; font-weight: 700; }
+.x-post-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-x-intent {
+  background: #0f0f0f;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 7px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: background 0.15s;
+}
+.btn-x-intent:hover   { background: #333; }
+.btn-x-intent:active  { opacity: 0.8; }
+.btn-x-intent:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .tab-content { display: block; }
 .tab-content.hidden { display: none; }
 .hidden { display: none !important; }
