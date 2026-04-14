@@ -168,6 +168,7 @@ const TradeTab = (() => {
         <div id="screen-preview-wrap" class="hidden">
           <video id="screen-preview" autoplay muted playsinline></video>
           <img   id="screen-capture-result" class="hidden" alt="キャプチャ結果">
+          <pre   id="analyze-result" class="analyze-result hidden"></pre>
         </div>
       </div>
     </div>`;

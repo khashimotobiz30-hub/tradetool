@@ -553,6 +553,19 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
   background: #000;
   object-fit: contain;
 }
+.analyze-result {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 8px 10px;
+  border-radius: 4px;
+  white-space: pre;
+  min-width: 160px;
+  align-self: center;
+}
+.analyze-ok      { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+.analyze-error   { background: #fdecea; color: #7d0000; border: 1px solid #ef9a9a; }
+.analyze-loading { background: #f5f5f5; color: #888;    border: 1px solid #ddd;    }
 
 /* ============================================================
    取引一覧

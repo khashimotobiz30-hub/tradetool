@@ -71,14 +71,14 @@ const ScreenShare = (() => {
     _setSharing(false);
   }
 
-  // フレームキャプチャ → base64 JPEG を返す
-  function capture() {
+  // フレームキャプチャ → base64 JPEG を取得し、そのまま AI 解析へ送る
+  async function capture() {
     _ensureVideo();
     _ensureCanvas();
 
     if (!_stream || !_video || _video.readyState < 2) {
       TradeTab.showToast('先に画面共有を開始してください', 'warn');
-      return null;
+      return;
     }
 
     // video の実解像度に合わせてキャンバスサイズを設定
@@ -97,14 +97,83 @@ const ScreenShare = (() => {
       capImg.classList.remove('hidden');
     }
 
-    // 次ステップ（AI解析）で使えるよう console にも出力
     console.log('[ScreenShare] capture OK —',
       _canvas.width + 'x' + _canvas.height,
       '— dataUrl bytes:', dataUrl.length
     );
 
-    TradeTab.showToast('画面を取得しました', 'info');
-    return dataUrl; // Step2以降で DataService に渡す用
+    // キャプチャ直後に自動で AI 解析を実行
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    await _analyze(base64);
+  }
+
+  // キャプチャ画像を /api/analyze に送って結果を表示する
+  async function _analyze(base64) {
+    _setAnalyzing(true);
+
+    let result;
+    try {
+      const res = await fetch('/api/analyze', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ imageBase64: base64 }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.message ?? `HTTP ${res.status}`);
+      }
+
+      result = data;
+      console.log('[ScreenShare] analyze result:', result);
+
+    } catch (err) {
+      console.error('[ScreenShare] analyze failed:', err);
+      TradeTab.showToast('AI解析エラー: ' + err.message, 'warn');
+      _showAnalyzeResult(null, err.message);
+      _setAnalyzing(false);
+      return;
+    }
+
+    _showAnalyzeResult(result, null);
+    _setAnalyzing(false);
+    TradeTab.showToast('AI解析 完了', 'info');
+  }
+
+  // 解析中のローディング表示
+  function _setAnalyzing(loading) {
+    const btn = document.getElementById('btn-screen-capture');
+    if (btn) {
+      btn.disabled  = loading;
+      btn.textContent = loading ? '解析中...' : '今の画面を取得';
+    }
+    const resultEl = document.getElementById('analyze-result');
+    if (resultEl && loading) {
+      resultEl.textContent = '解析中...';
+      resultEl.className   = 'analyze-result analyze-loading';
+      resultEl.classList.remove('hidden');
+    }
+  }
+
+  // 解析結果を画面に表示する
+  function _showAnalyzeResult(data, errorMsg) {
+    const el = document.getElementById('analyze-result');
+    if (!el) return;
+
+    if (errorMsg) {
+      el.className   = 'analyze-result analyze-error';
+      el.textContent = '解析失敗: ' + errorMsg;
+    } else {
+      el.className = 'analyze-result analyze-ok';
+      el.textContent = [
+        `現在値  : ${data.currentPrice ?? 'N/A'}`,
+        `VWAP    : ${data.vwap         ?? 'N/A'}`,
+        `5MA     : ${data.ma5          ?? 'N/A'}`,
+        `信頼度  : ${data.confidence   ?? 'N/A'}`,
+      ].join('\n');
+    }
+    el.classList.remove('hidden');
   }
 
   // render() 再実行後に UI 状態を復元する

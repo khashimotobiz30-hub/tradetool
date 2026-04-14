@@ -28,7 +28,8 @@ const MIME = {
 };
 
 // --- API ハンドラを読み込む ---
-const stockHandler = require('./api/stock');
+const stockHandler   = require('./api/stock');
+const analyzeHandler = require('./api/analyze');
 
 // --- Vercel 風の res ラッパー ---
 function makeVercelRes(nodeRes) {
@@ -45,6 +46,23 @@ function makeVercelRes(nodeRes) {
       nodeRes.end(payload);
     },
   };
+}
+
+// --- POST リクエストの JSON ボディを読み取る ---
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const text = Buffer.concat(chunks).toString('utf8');
+        resolve(text ? JSON.parse(text) : {});
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 // --- 静的ファイル配信 ---
@@ -79,6 +97,20 @@ const server = http.createServer(async (req, res) => {
       await stockHandler({ method: req.method, url: req.url }, vercelRes);
     } catch (err) {
       console.error('[dev-server] unhandled error:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'InternalServerError', message: err.message }));
+    }
+    return;
+  }
+
+  // /api/analyze ルーティング (POST + JSON ボディパース)
+  if (url === '/api/analyze') {
+    const vercelRes = makeVercelRes(res);
+    try {
+      const body = await readJsonBody(req);
+      await analyzeHandler({ method: req.method, url: req.url, body }, vercelRes);
+    } catch (err) {
+      console.error('[dev-server] /api/analyze error:', err.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'InternalServerError', message: err.message }));
     }
