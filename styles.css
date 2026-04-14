@@ -852,8 +852,8 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
 .btn:hover:not(:disabled) { opacity: 0.85; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-primary   { background: #1e5fa8; color: #fff; }
-.btn-secondary { background: #6c757d; color: #fff; }
+.btn-primary   { background: #1b3461; color: #fff; }
+.btn-secondary { background: #fff; color: #1b3461; border: 1.5px solid #1b3461; }
 .btn-buy       { background: #1b8a4c; color: #fff; }
 .btn-sell      { background: #c0392b; color: #fff; }
 .btn-partial   { background: #2980b9; color: #fff; }
