@@ -95,8 +95,9 @@ const TradeTab = (() => {
 
     root.innerHTML = `
       ${_renderUpdateArea(stockData)}
+      ${_renderEntryPlanPanel(judgment, status)}
       ${_renderJudgmentPanel(status, judgment, stockData, position)}
-      ${_renderAiCommentaryPanel(state.aiCommentary)}
+      ${_renderAiCommentaryPanel(state.aiCommentary, status)}
       ${_renderCommentPanel(judgment)}
       ${_renderOperationPanel(status, stockData, position)}
       ${_renderTradeList(session)}
@@ -308,11 +309,103 @@ const TradeTab = (() => {
     </div>`;
   }
 
+  // --- エントリープランパネル (ノーポジ時のみ) ---
+  // ロング・ショート両方向の価格プランを左右2カラムで表示する。
+  // 保有中・データなし時は非表示。
+  function _renderEntryPlanPanel(judgment, status) {
+    if (!judgment) return '';
+    const noPos = ['buy_wait', 'sell_wait', 'pass'].includes(judgment.state);
+    if (!noPos) return '';
+
+    const { longPlan: lp, shortPlan: sp, planSummary } = judgment;
+    if (!lp && !sp) return '';
+
+    const biasCls = {
+      long:       'bias-long',
+      short:      'bias-short',
+      neutral:    'bias-neutral',
+      both:       'bias-both',
+      both_long:  'bias-both-long',
+      both_short: 'bias-both-short',
+    }[planSummary?.bias] ?? 'bias-neutral';
+    const biasLabel = planSummary?.label ?? '--';
+
+    // 価格行ヘルパー: label / value / extraCls
+    function priceRow(label, val, extraCls = '') {
+      return `<div class="ep-price-row ${extraCls}">
+        <span class="ep-price-label">${label}</span>
+        <span class="ep-price-val">${val != null ? fmtPrc(val) : '--'}</span>
+      </div>`;
+    }
+
+    const longCard = lp ? `
+      <div class="ep-card ep-long">
+        <div class="ep-card-title ep-long-title">📈 ロング</div>
+        <div class="ep-prices">
+          ${priceRow('買い目安',   lp.entry,        'ep-entry')}
+          ${priceRow('損切り',     lp.stopLoss,     'ep-stop')}
+          ${priceRow('利確①',     lp.takeProfit1,  'ep-tp1')}
+          ${priceRow('目標②',     lp.takeProfit2,  'ep-tp2')}
+        </div>
+        <div class="ep-text-row">
+          <span class="ep-text-lbl">根拠</span>
+          <span class="ep-text-val">${lp.reason ?? '--'}</span>
+        </div>
+        <div class="ep-text-row ep-invalid-row">
+          <span class="ep-text-lbl">無効</span>
+          <span class="ep-text-val ep-invalid">${lp.invalidation ?? '--'}</span>
+        </div>
+      </div>` : '';
+
+    const shortCard = sp ? `
+      <div class="ep-card ep-short">
+        <div class="ep-card-title ep-short-title">📉 ショート</div>
+        <div class="ep-prices">
+          ${priceRow('売り目安',   sp.entry,        'ep-entry ep-entry-short')}
+          ${priceRow('損切り',     sp.stopLoss,     'ep-stop')}
+          ${priceRow('利確①',     sp.takeProfit1,  'ep-tp1')}
+          ${priceRow('目標②',     sp.takeProfit2,  'ep-tp2')}
+        </div>
+        <div class="ep-text-row">
+          <span class="ep-text-lbl">根拠</span>
+          <span class="ep-text-val">${sp.reason ?? '--'}</span>
+        </div>
+        <div class="ep-text-row ep-invalid-row">
+          <span class="ep-text-lbl">無効</span>
+          <span class="ep-text-val ep-invalid">${sp.invalidation ?? '--'}</span>
+        </div>
+      </div>` : '';
+
+    // 見送り判定時: 「現在は待機」補足文を追加して混乱を防ぐ
+    const passNote = judgment.state === 'pass'
+      ? `<div class="ep-pass-note">現在は待機推奨です。以下の価格帯に到達した際のプランを参考にしてください。</div>`
+      : '';
+
+    return `
+    <div class="card ep-panel">
+      <div class="ep-header">
+        <span class="ep-title">エントリープラン</span>
+        <span class="ep-bias-badge ${biasCls}">${biasLabel}</span>
+      </div>
+      ${passNote}
+      <div class="ep-grid">
+        ${longCard}
+        ${shortCard}
+      </div>
+    </div>`;
+  }
+
   // --- AI市場見解パネル ---
   // DataService.fetchMarketCommentary() の結果を表示する。
   // データなし = 「市場情報更新」未押下 → 何も表示しない。
-  function _renderAiCommentaryPanel(commentary) {
+  // 保有中は「参考値」免責注記を付与してノイズを明示する。
+  function _renderAiCommentaryPanel(commentary, status) {
     if (!commentary) return '';
+
+    const isHolding = status === 'hold_long' || status === 'hold_short' || status === 'partial';
+    const holdNote  = isHolding
+      ? `<div class="ai-hold-note">⚠️ この見解は直近の取得時点のものです。現在の保有ポジション管理を優先してください。</div>`
+      : '';
 
     const conf = commentary.confidence ?? 'low';
     const confLabel = { high: '信頼度: 高', medium: '信頼度: 中', low: '信頼度: 低' }[conf] ?? conf;
@@ -332,6 +425,7 @@ const TradeTab = (() => {
         <span class="badge badge-conf-${conf}">${confLabel}</span>
         <span class="ai-commentary-time">${fmtTime(commentary.fetchedAt)}</span>
       </div>
+      ${holdNote}
       <div class="ai-commentary-body">
         <div class="ai-row">
           <span class="ai-label">現状</span>
