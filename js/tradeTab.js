@@ -98,19 +98,22 @@ const TradeTab = (() => {
     // 保有中:   旧UIをそのまま維持
     const isHold = status === 'hold_long' || status === 'hold_short' || status === 'partial';
 
-    const legacyPanels = `
-      ${_renderJudgmentPanel(status, judgment, stockData, position)}
-      ${_renderAiCommentaryPanel(state.aiCommentary, status)}
-      ${_renderCommentPanel(judgment)}
-    `;
-
     root.innerHTML = `
       ${_renderUpdateArea(stockData)}
-      ${!isHold ? `
+      ${isHold ? `
+        ${_renderJudgmentPanel(status, judgment, stockData, position)}
+        ${_renderHoldScoringPanel(judgment, position, stockData)}
+        ${_renderAiCommentaryPanel(state.aiCommentary, status)}
+        ${_renderCommentPanel(judgment)}
+      ` : `
         ${_renderEntryPlanPanel(judgment, status)}
         ${_renderReasonPanel(judgment)}
-        <div style="display:none">${legacyPanels}</div>
-      ` : legacyPanels}
+        <div style="display:none">
+          ${_renderJudgmentPanel(status, judgment, stockData, position)}
+          ${_renderAiCommentaryPanel(state.aiCommentary, status)}
+          ${_renderCommentPanel(judgment)}
+        </div>
+      `}
       ${_renderOperationPanel(status, stockData, position)}
       ${_renderTradeList(session)}
       ${_renderDaySummary(session)}
@@ -565,6 +568,140 @@ const TradeTab = (() => {
       ${lp ? siRow('ロング根拠', lp.reason, 'si-long') : ''}
       ${sp ? siRow('ショート根拠', sp.reason, 'si-short') : ''}
       ${invalidText ? siRow('無効条件', invalidText, 'si-invalid') : ''}
+    </div>`;
+  }
+
+  // --- 保有スコアリングパネル (保有中のみ) ---
+  // hold_validity_score を使って保有方針と状況を要約表示する。
+  function _renderHoldScoringPanel(judgment, position, stockData) {
+    const sc = judgment?._scoring;
+    if (!sc) return '';
+
+    const isLong  = position?.direction === 'long';
+    const cp      = stockData?.currentPrice;
+    const ex      = judgment.exitLevels || {};
+    const scores  = sc.scores || {};
+    const data    = sc.data   || {};
+
+    const hv = scores.hold_validity_score ?? 5.0;
+    const am = data.above_ma        ?? 0;
+    const ms = data.micro_structure ?? 0;
+    const sup = data._supportLevel;
+    const res = data._resistLevel;
+
+    // ── 保有妥当性分類 ──────────────────────────────────────────
+    let hvClass, hvLabel, hvJudge;
+    if (hv >= 7.0) {
+      hvClass = 'hv-hold';
+      hvLabel = '保有継続';
+      hvJudge = isLong
+        ? 'ロング根拠が維持されている。計画通りに進める'
+        : 'ショート根拠が維持されている。計画通りに進める';
+    } else if (hv >= 5.0) {
+      hvClass = 'hv-caution';
+      hvLabel = '警戒継続';
+      hvJudge = '根拠は残っているが状況が変化しつつある。価格水準を慎重に確認する';
+    } else if (hv >= 3.0) {
+      hvClass = 'hv-partial';
+      hvLabel = '一部利確検討';
+      hvJudge = isLong
+        ? 'ロング根拠が崩れつつある。利益を確保するため部分利確を検討する'
+        : 'ショート根拠が崩れつつある。利益を確保するため部分利確を検討する';
+    } else {
+      hvClass = 'hv-exit';
+      hvLabel = '撤退優先';
+      hvJudge = '継続根拠がない。損小化を最優先にする';
+    }
+
+    // ── 価格ライン ──────────────────────────────────────────────
+    // 継続条件: ロング→サポート(VWAP/5MA下値)維持 / ショート→レジスタンス上値を超えない
+    const keepLine = isLong ? sup : res;
+    const exitLine = ex.escapeLine ?? ex.stopLoss;
+    const tpLine   = ex.target1;
+    const keepDir  = isLong ? '下回らなければ継続' : '上回らなければ継続';
+    const exitDir  = isLong ? '割り込んだら即撤退' : '超えたら即撤退';
+
+    function hvRow(label, val, cls = '') {
+      if (!val) return '';
+      return `<div class="hv-row${cls ? ' ' + cls : ''}">
+        <span class="hv-label">${label}</span>
+        <span class="hv-val">${val}</span>
+      </div>`;
+    }
+
+    // ── エントリー根拠 ──────────────────────────────────────────
+    let basisText, basisCls;
+    if (isLong) {
+      if      (am ===  1) { basisText = 'VWAP・5MA の上位を維持。上昇根拠が継続中';       basisCls = 'hv-basis-ok'; }
+      else if (am ===  0) { basisText = 'VWAP・5MA に交差。方向感が薄れている';             basisCls = 'hv-basis-warn'; }
+      else                { basisText = 'VWAP・5MA を下抜け。ロング根拠が弱まっている';     basisCls = 'hv-basis-ng'; }
+    } else {
+      if      (am === -1) { basisText = 'VWAP・5MA の下位を維持。下落根拠が継続中';       basisCls = 'hv-basis-ok'; }
+      else if (am ===  0) { basisText = 'VWAP・5MA に交差。方向感が薄れている';             basisCls = 'hv-basis-warn'; }
+      else                { basisText = 'VWAP・5MA を上抜け。ショート根拠が弱まっている'; basisCls = 'hv-basis-ng'; }
+    }
+
+    // ── 位置優劣 ────────────────────────────────────────────────
+    const entryPx = position?.avgEntryPrice ?? position?.entryPrice;
+    let posText = '', posCls = '';
+    if (cp != null && entryPx != null) {
+      const diff = isLong ? cp - entryPx : entryPx - cp;
+      if      (diff > 0) { posText = '含み益あり — 有利な位置';    posCls = 'hv-pos-good'; }
+      else if (diff < 0) { posText = '含み損 — 不利な位置';        posCls = 'hv-pos-bad'; }
+      else               { posText = '建値付近 — 損益分岐点';      posCls = 'hv-pos-even'; }
+    }
+
+    // ── NG 行動 ─────────────────────────────────────────────────
+    const ngItems = [];
+    if (hv < 5.0) {
+      ngItems.push(isLong
+        ? '含み損を理由にしたナンピン(買い増し)は避ける'
+        : '含み損を理由にしたナンピン(売り増し)は避ける');
+    }
+    if ((isLong && am !== 1) || (!isLong && am !== -1)) {
+      ngItems.push(isLong
+        ? 'VWAP・5MA を下回った状態でのポジション継続は避ける'
+        : 'VWAP・5MA を上回った状態でのポジション継続は避ける');
+    }
+    if (exitLine != null) {
+      ngItems.push(isLong
+        ? `${fmtPrc(exitLine)} 割れ後の「もう少し待てば戻る」は避ける`
+        : `${fmtPrc(exitLine)} 超え後の「もう少し待てば戻る」は避ける`);
+    }
+
+    const ngHtml = ngItems.length
+      ? `<div class="hv-row hv-ng">
+          <span class="hv-label">NG</span>
+          <span class="hv-val">
+            ${ngItems.map(n => `<div class="hv-ng-item">❌ ${n}</div>`).join('')}
+          </span>
+         </div>`
+      : '';
+
+    return `
+    <div class="card hv-panel">
+      <div class="hv-header">
+        <span class="hv-title">保有方針</span>
+        <span class="hv-badge ${hvClass}">${hvLabel}</span>
+      </div>
+      ${hvRow('今の判断', hvJudge, 'hv-judge')}
+      ${keepLine != null ? hvRow('継続条件', `${fmtPrc(keepLine)} を${keepDir}`) : ''}
+      ${tpLine   != null ? hvRow('一部利確', `${fmtPrc(tpLine)} 付近で半分利確を検討`, 'hv-tp') : ''}
+      ${exitLine != null ? hvRow('撤退優先', `${fmtPrc(exitLine)} を${exitDir}`, 'hv-exit-line') : ''}
+    </div>
+    <div class="card hv-status-panel">
+      <div class="hv-status-header">
+        <span class="hv-title">状況</span>
+      </div>
+      <div class="hv-row hv-basis ${basisCls}">
+        <span class="hv-label">根拠</span>
+        <span class="hv-val">${basisText}</span>
+      </div>
+      ${posText ? `<div class="hv-row ${posCls}">
+        <span class="hv-label">位置</span>
+        <span class="hv-val">${posText}</span>
+      </div>` : ''}
+      ${ngHtml}
     </div>`;
   }
 

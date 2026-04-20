@@ -1564,4 +1564,111 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
   resize: none;
 }
 .modal-copy { margin-bottom: 16px; }
+
+/* ============================================================
+   保有方針パネル (hv-panel / hv-status-panel)
+   保有中のみ表示。hold_validity_score に基づく要約パネル。
+   ============================================================ */
+
+/* ── ヘッダー ── */
+.hv-header,
+.hv-status-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hv-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  flex: 1;
+  color: #333;
+}
+
+/* ── 保有妥当性バッジ ── */
+.hv-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.hv-hold    { background: #d4edda; color: #155724; }
+.hv-caution { background: #fff3cd; color: #856404; }
+.hv-partial { background: #ffe0b2; color: #7d4800; }
+.hv-exit    { background: #f8d7da; color: #721c24; }
+
+/* ── 行レイアウト ── */
+.hv-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.87rem;
+}
+
+.hv-label {
+  color: #888;
+  font-size: 0.78rem;
+  min-width: 58px;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.hv-val {
+  flex: 1;
+  line-height: 1.55;
+  color: #333;
+}
+
+/* 今の判断 */
+.hv-judge .hv-val {
+  font-weight: 600;
+}
+
+/* 一部利確価格 */
+.hv-tp .hv-val {
+  color: #1565c0;
+  font-weight: 600;
+}
+
+/* 撤退ライン */
+.hv-exit-line .hv-val {
+  color: #b71c1c;
+  font-weight: 700;
+}
+
+/* ── 根拠行 (色付き背景) ── */
+.hv-basis {
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.hv-basis-ok   { background: #e8f5e9; }
+.hv-basis-ok   .hv-label,
+.hv-basis-ok   .hv-val { color: #2e7d32; }
+
+.hv-basis-warn { background: #fff8e1; }
+.hv-basis-warn .hv-label,
+.hv-basis-warn .hv-val { color: #e65100; }
+
+.hv-basis-ng   { background: #ffebee; }
+.hv-basis-ng   .hv-label,
+.hv-basis-ng   .hv-val { color: #c62828; }
+
+/* ── 位置優劣 ── */
+.hv-pos-good .hv-val { color: #1565c0; font-weight: 600; }
+.hv-pos-bad  .hv-val { color: #c62828; font-weight: 600; }
+.hv-pos-even .hv-val { color: #666; }
+
+/* ── NG 行動 ── */
+.hv-ng .hv-val {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hv-ng-item {
+  color: #c62828;
+  font-size: 0.84rem;
+}
 .modal-box .btn { margin-top: 4px; }

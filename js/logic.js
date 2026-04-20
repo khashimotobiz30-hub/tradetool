@@ -80,13 +80,11 @@ const Logic = (() => {
     }
 
     // 保有中の場合は出口判断を返す
-    if (position && position.status !== 'closed') {
-      return computeExitJudgment(stockData, marketData, position);
-    }
+    const judgment = (position && position.status !== 'closed')
+      ? computeExitJudgment(stockData, marketData, position)
+      : computeEntryJudgment(stockData, marketData);
 
-    const judgment = computeEntryJudgment(stockData, marketData);
-
-    // スコアリングエンジンを呼び出して結果を付加
+    // スコアリングエンジンを呼び出して結果を付加 (保有中・ノーポジ共通)
     try {
       if (typeof Scoring !== 'undefined') {
         const scoring = Scoring.analyze(stockData, marketData, position);
