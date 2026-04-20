@@ -884,18 +884,35 @@ body {
   letter-spacing: 0.5px;
   margin-bottom: 6px;
 }
-.sc-trigger-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 0;
-  font-size: 12px;
-  line-height: 1.5;
+/* トリガーブロック (エントリー条件 / 無効化ライン) */
+.sc-trigger-block {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #f8f9fa;
 }
-.sc-trigger-icon { flex-shrink: 0; font-size: 12px; }
-.sc-trigger-text { flex: 1; }
-.sc-trigger-long  .sc-trigger-text { color: #1a5fa8; }
-.sc-trigger-short .sc-trigger-text { color: #a00; }
+.sc-trigger-block:last-child { margin-bottom: 0; }
+.sc-trigger-block-head {
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.sc-trigger-long  .sc-trigger-block-head { color: #1a5fa8; }
+.sc-trigger-short .sc-trigger-block-head { color: #a00; }
+.sc-trigger-entry {
+  font-size: 12px;
+  color: #333;
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+.sc-trigger-inval {
+  font-size: 11px;
+  color: #999;
+  line-height: 1.4;
+  padding-top: 2px;
+  border-top: 1px dashed #e0e0e0;
+  margin-top: 3px;
+}
 
 /* ============================================================
    状況エリア (スコアリング結果表示)
@@ -914,6 +931,7 @@ body {
 .si-val          { flex: 1; color: #333; }
 .si-eval .si-val    { font-size: 11px; color: #777; font-family: monospace; }
 .si-avoid .si-val   { color: #c0392b; font-size: 12px; }
+.si-avoid-item      { line-height: 1.6; }
 .si-summary .si-val { font-weight: 600; color: #1a1a1a; }
 .si-long .si-val    { color: #1b3461; }
 .si-short .si-val   { color: #7d0000; }

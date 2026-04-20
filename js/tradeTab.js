@@ -355,21 +355,31 @@ const TradeTab = (() => {
         </div>`;
       }
 
-      // 次の行動トリガーセクション (全状態で表示)
+      // エントリー条件 / 無効化ライン セクション
       const t = o.trigger || {};
-      function triggerRow(icon, label, cls) {
-        if (!label) return '';
-        return `<div class="sc-trigger-row ${cls}">
-          <span class="sc-trigger-icon">${icon}</span>
-          <span class="sc-trigger-text">${label}</span>
-        </div>`;
+
+      function triggerBlock(side) {
+        const tc  = t[side] || {};
+        const icon = side === 'long' ? '📈' : '📉';
+        const dirLabel = side === 'long' ? 'ロング' : 'ショート';
+        const entryCls = side === 'long' ? 'sc-trigger-long' : 'sc-trigger-short';
+        const hasEntry = !!tc.entry;
+        const hasInval = !!tc.invalidation;
+        if (!hasEntry && !hasInval) return '';
+        return `
+          <div class="sc-trigger-block ${entryCls}">
+            <div class="sc-trigger-block-head">${icon} ${dirLabel}</div>
+            ${hasEntry ? `<div class="sc-trigger-entry">${tc.entry}</div>` : ''}
+            ${hasInval ? `<div class="sc-trigger-inval">✕ ${tc.invalidation}</div>` : ''}
+          </div>`;
       }
-      const triggerSection = (t.long?.label || t.short?.label) ? `
+
+      const triggerSection = `
         <div class="sc-trigger-section">
-          <div class="sc-trigger-title">次の行動トリガー</div>
-          ${triggerRow('📈', t.long?.label,  'sc-trigger-long')}
-          ${triggerRow('📉', t.short?.label, 'sc-trigger-short')}
-        </div>` : '';
+          <div class="sc-trigger-title">エントリー条件 / 無効化ライン</div>
+          ${triggerBlock('long')}
+          ${triggerBlock('short')}
+        </div>`;
 
       if (isWait) {
         return `
@@ -386,8 +396,6 @@ const TradeTab = (() => {
         </div>`;
       }
 
-      const condNote = o.entryPlan ? `<div class="sc-entry-cond">${o.entryPlan}</div>` : '';
-
       return `
       <div class="card sc-entry-panel">
         <div class="sc-entry-header">
@@ -395,7 +403,7 @@ const TradeTab = (() => {
           <span class="sc-state-badge ${stateCls}">${o.state}</span>
           <span class="sc-dir-badge ${dirCls}">${dir}</span>
         </div>
-        ${condNote}
+        <div class="sc-entry-cond">${o.entryPlan}</div>
         <div class="sc-prices">
           ${scPriceRow('準備価格',   p.entry, 'sc-entry-price')}
           ${scPriceRow('損切り警戒', p.stop,  'sc-stop-price')}
@@ -515,15 +523,26 @@ const TradeTab = (() => {
       const dir = o.direction;
       const dirCls = dir === 'ロング' ? 'si-dir-long' : dir === 'ショート' ? 'si-dir-short' : 'si-dir-neutral';
 
+      // avoid は配列 → 番号付きリスト
+      const avoidItems = Array.isArray(o.avoid) ? o.avoid : (o.avoid ? [o.avoid] : []);
+      const avoidHtml = avoidItems.length
+        ? `<div class="si-row si-avoid">
+            <span class="si-label">NG</span>
+            <span class="si-val">
+              ${avoidItems.map((a, i) => `<div class="si-avoid-item">❌ ${a}</div>`).join('')}
+            </span>
+           </div>`
+        : '';
+
       return `
       <div class="card si-panel">
         <div class="si-header">
           <span class="si-title">状況</span>
           <span class="si-dir-badge ${dirCls}">${dir}</span>
         </div>
-        ${siRow('評価',        o.evaluation, 'si-eval')}
-        ${siRow('NG',          o.avoid,      'si-avoid')}
-        ${siRow('要約',        o.summary,    'si-summary')}
+        ${siRow('判断', o.summary,    'si-summary')}
+        ${siRow('評価', o.evaluation, 'si-eval')}
+        ${avoidHtml}
       </div>`;
     }
 
