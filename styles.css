@@ -840,6 +840,86 @@ body {
 .reason-invalid .reason-val { color: #c0392b; font-size: 12px; }
 
 /* ============================================================
+   エントリー準備エリア (スコアリング結果表示)
+   ============================================================ */
+.sc-entry-panel { border-left: 4px solid #4a90d9; }
+.sc-entry-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sc-entry-title  { font-size: 13px; font-weight: 700; color: #1a1a1a; flex: 1; }
+.sc-state-badge  { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+.sc-state-hot      { background: #fff0e0; color: #b85c00; }
+.sc-state-pullback { background: #e8f4fd; color: #1a5fa8; }
+.sc-state-chop     { background: #f5f5f5; color: #666; }
+.sc-state-break    { background: #fdf0f0; color: #a00; }
+.sc-state-wait     { background: #f5f5f5; color: #888; }
+.sc-dir-badge    { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.sc-dir-long     { background: #e8f0fb; color: #1b3461; }
+.sc-dir-short    { background: #fdf0f0; color: #7d0000; }
+.sc-dir-neutral  { background: #f4f5f7; color: #888; }
+.sc-entry-cond   { font-size: 11px; color: #666; background: #f8f9fa; border-radius: 4px; padding: 5px 8px; margin-bottom: 8px; line-height: 1.5; }
+.sc-prices       { display: flex; flex-direction: column; }
+.sc-price-row    { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f2f2f2; }
+.sc-price-row:last-child { border-bottom: none; }
+.sc-price-label  { flex: 0 0 72px; font-size: 11px; color: #888; font-weight: 600; }
+.sc-price-val    { font-size: 18px; font-weight: 700; color: #1a1a1a; letter-spacing: -0.5px; }
+.sc-entry-price .sc-price-val { color: #1a5fa8; }
+.sc-stop-price  .sc-price-val { color: #c0392b; }
+.sc-tp1-price   .sc-price-val { color: #217a45; }
+.sc-tp2-price   .sc-price-val { color: #2eaa60; font-size: 15px; }
+.sc-entry-panel.sc-wait { border-left-color: #ccc; }
+.sc-wait-body   { display: flex; align-items: center; gap: 8px; padding: 10px 0 6px; }
+.sc-wait-icon   { font-size: 18px; flex-shrink: 0; }
+.sc-wait-text   { font-size: 13px; color: #555; line-height: 1.5; }
+
+/* 次の行動トリガー */
+.sc-trigger-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+.sc-trigger-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.sc-trigger-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.sc-trigger-icon { flex-shrink: 0; font-size: 12px; }
+.sc-trigger-text { flex: 1; }
+.sc-trigger-long  .sc-trigger-text { color: #1a5fa8; }
+.sc-trigger-short .sc-trigger-text { color: #a00; }
+
+/* ============================================================
+   状況エリア (スコアリング結果表示)
+   ============================================================ */
+.si-panel        { border-left: 4px solid #dde2e8; }
+.si-header       { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.si-title        { font-size: 13px; font-weight: 700; color: #1a1a1a; flex: 1; }
+.si-dir-badge    { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.si-dir-long     { background: #e8f0fb; color: #1b3461; }
+.si-dir-short    { background: #fdf0f0; color: #7d0000; }
+.si-dir-neutral  { background: #f4f5f7; color: #888; }
+.si-state-label  { font-size: 11px; color: #888; background: #f4f5f7; border-radius: 4px; padding: 2px 8px; }
+.si-row          { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; line-height: 1.5; align-items: baseline; }
+.si-row:last-child { border-bottom: none; }
+.si-label        { flex: 0 0 40px; font-size: 11px; color: #888; font-weight: 600; padding-top: 1px; flex-shrink: 0; }
+.si-val          { flex: 1; color: #333; }
+.si-eval .si-val    { font-size: 11px; color: #777; font-family: monospace; }
+.si-avoid .si-val   { color: #c0392b; font-size: 12px; }
+.si-summary .si-val { font-weight: 600; color: #1a1a1a; }
+.si-long .si-val    { color: #1b3461; }
+.si-short .si-val   { color: #7d0000; }
+.si-invalid .si-val { color: #c0392b; font-size: 12px; }
+
+/* ============================================================
    操作パネル
    ============================================================ */
 .operation-panel .op-title {

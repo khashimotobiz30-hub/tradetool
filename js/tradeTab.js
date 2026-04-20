@@ -322,73 +322,103 @@ const TradeTab = (() => {
   }
 
   // --- エントリープランパネル (ノーポジ時のみ) ---
-  // ロング・ショート両方向の価格プランを左右2カラムで表示する。
-  // 保有中・データなし時は非表示。
+  // --- エントリー準備エリア (スコアリング結果から優位な片側のみ表示) ---
+  // ノーポジ時のみ表示。_scoring がある場合はその結果を優先使用。
   function _renderEntryPlanPanel(judgment, status) {
     if (!judgment) return '';
     const noPos = ['buy_wait', 'sell_wait', 'pass'].includes(judgment.state);
     if (!noPos) return '';
 
+    const sc = judgment._scoring;
+
+    // スコアリング結果が使える場合
+    if (sc && sc.output) {
+      const o   = sc.output;
+      const dir = o.direction;  // 'ロング' | 'ショート' | '中立'
+      const p   = o.prices || {};
+      const isWait = ['様子見', '高値揉み', '崩れ'].includes(o.state) && p.entry == null;
+
+      // 方向バッジ
+      const dirCls   = dir === 'ロング' ? 'sc-dir-long' : dir === 'ショート' ? 'sc-dir-short' : 'sc-dir-neutral';
+      const stateCls = {
+        '強い初動':  'sc-state-hot',
+        '押し目候補':'sc-state-pullback',
+        '高値揉み':  'sc-state-chop',
+        '崩れ':      'sc-state-break',
+        '様子見':    'sc-state-wait',
+      }[o.state] ?? 'sc-state-wait';
+
+      function scPriceRow(label, val, cls = '') {
+        return `<div class="sc-price-row${cls ? ' ' + cls : ''}">
+          <span class="sc-price-label">${label}</span>
+          <span class="sc-price-val">${val != null ? fmtPrc(val) : '--'}</span>
+        </div>`;
+      }
+
+      // 次の行動トリガーセクション (全状態で表示)
+      const t = o.trigger || {};
+      function triggerRow(icon, label, cls) {
+        if (!label) return '';
+        return `<div class="sc-trigger-row ${cls}">
+          <span class="sc-trigger-icon">${icon}</span>
+          <span class="sc-trigger-text">${label}</span>
+        </div>`;
+      }
+      const triggerSection = (t.long?.label || t.short?.label) ? `
+        <div class="sc-trigger-section">
+          <div class="sc-trigger-title">次の行動トリガー</div>
+          ${triggerRow('📈', t.long?.label,  'sc-trigger-long')}
+          ${triggerRow('📉', t.short?.label, 'sc-trigger-short')}
+        </div>` : '';
+
+      if (isWait) {
+        return `
+        <div class="card sc-entry-panel sc-wait">
+          <div class="sc-entry-header">
+            <span class="sc-entry-title">エントリー準備</span>
+            <span class="sc-state-badge ${stateCls}">${o.state}</span>
+          </div>
+          <div class="sc-wait-body">
+            <span class="sc-wait-icon">⏸</span>
+            <span class="sc-wait-text">${o.entryPlan}</span>
+          </div>
+          ${triggerSection}
+        </div>`;
+      }
+
+      const condNote = o.entryPlan ? `<div class="sc-entry-cond">${o.entryPlan}</div>` : '';
+
+      return `
+      <div class="card sc-entry-panel">
+        <div class="sc-entry-header">
+          <span class="sc-entry-title">エントリー準備</span>
+          <span class="sc-state-badge ${stateCls}">${o.state}</span>
+          <span class="sc-dir-badge ${dirCls}">${dir}</span>
+        </div>
+        ${condNote}
+        <div class="sc-prices">
+          ${scPriceRow('準備価格',   p.entry, 'sc-entry-price')}
+          ${scPriceRow('損切り警戒', p.stop,  'sc-stop-price')}
+          ${scPriceRow('利確①',     p.tp1,   'sc-tp1-price')}
+          ${scPriceRow('目標②',     p.tp2,   'sc-tp2-price')}
+        </div>
+        ${triggerSection}
+      </div>`;
+    }
+
+    // フォールバック: 旧ロジック (scoring未到達時)
     const { longPlan: lp, shortPlan: sp, planSummary } = judgment;
     if (!lp && !sp) return '';
-
-    const biasCls = {
-      long:       'bias-long',
-      short:      'bias-short',
-      neutral:    'bias-neutral',
-      both:       'bias-both',
-      both_long:  'bias-both-long',
-      both_short: 'bias-both-short',
-    }[planSummary?.bias] ?? 'bias-neutral';
     const biasLabel = planSummary?.label ?? '--';
-
-    // 価格行ヘルパー: label / value / extraCls
     function priceRow(label, val, extraCls = '') {
       return `<div class="ep-price-row ${extraCls}">
         <span class="ep-price-label">${label}</span>
         <span class="ep-price-val">${val != null ? fmtPrc(val) : '--'}</span>
       </div>`;
     }
-
-    const longCard = lp ? `
-      <div class="ep-card ep-long">
-        <div class="ep-card-title ep-long-title">📈 ロング</div>
-        <div class="ep-prices">
-          ${priceRow('買い目安', lp.entry,       'ep-entry')}
-          ${priceRow('損切り',   lp.stopLoss,    'ep-stop')}
-          ${priceRow('利確①',   lp.takeProfit1, 'ep-tp1')}
-          ${priceRow('目標②',   lp.takeProfit2, 'ep-tp2')}
-        </div>
-      </div>` : '';
-
-    const shortCard = sp ? `
-      <div class="ep-card ep-short">
-        <div class="ep-card-title ep-short-title">📉 ショート</div>
-        <div class="ep-prices">
-          ${priceRow('売り目安', sp.entry,       'ep-entry ep-entry-short')}
-          ${priceRow('損切り',   sp.stopLoss,    'ep-stop')}
-          ${priceRow('利確①',   sp.takeProfit1, 'ep-tp1')}
-          ${priceRow('目標②',   sp.takeProfit2, 'ep-tp2')}
-        </div>
-      </div>` : '';
-
-    // 見送り判定時: 「現在は待機」補足文を追加して混乱を防ぐ
-    const passNote = judgment.state === 'pass'
-      ? `<div class="ep-pass-note">現在は待機推奨です。以下の価格帯に到達した際のプランを参考にしてください。</div>`
-      : '';
-
-    return `
-    <div class="card ep-panel">
-      <div class="ep-header">
-        <span class="ep-title">エントリープラン</span>
-        <span class="ep-bias-badge ${biasCls}">${biasLabel}</span>
-      </div>
-      ${passNote}
-      <div class="ep-grid">
-        ${longCard}
-        ${shortCard}
-      </div>
-    </div>`;
+    const longCard = lp ? `<div class="ep-card ep-long"><div class="ep-card-title ep-long-title">📈 ロング</div><div class="ep-prices">${priceRow('買い目安',lp.entry,'ep-entry')}${priceRow('損切り',lp.stopLoss,'ep-stop')}${priceRow('利確①',lp.takeProfit1,'ep-tp1')}${priceRow('目標②',lp.takeProfit2,'ep-tp2')}</div></div>` : '';
+    const shortCard = sp ? `<div class="ep-card ep-short"><div class="ep-card-title ep-short-title">📉 ショート</div><div class="ep-prices">${priceRow('売り目安',sp.entry,'ep-entry ep-entry-short')}${priceRow('損切り',sp.stopLoss,'ep-stop')}${priceRow('利確①',sp.takeProfit1,'ep-tp1')}${priceRow('目標②',sp.takeProfit2,'ep-tp2')}</div></div>` : '';
+    return `<div class="card ep-panel"><div class="ep-header"><span class="ep-title">エントリープラン</span><span class="ep-bias-badge">${biasLabel}</span></div><div class="ep-grid">${longCard}${shortCard}</div></div>`;
   }
 
   // --- AI市場見解パネル ---
@@ -462,42 +492,60 @@ const TradeTab = (() => {
     </div>`;
   }
 
-  // --- 判断理由パネル (ノーポジ時のみ) ---
-  // 現状・優先方向・ロング根拠・ショート根拠・無効条件を1ブロックに集約する。
-  // render() 側で isHold=false の時のみ呼び出されるが、内部でも念のり state チェックを行う。
+  // --- 状況エリア (スコアリング結果から生成) ---
+  // 状態・目線・評価スコア・NG行動・要約を1ブロックに集約する。
+  // ノーポジ時のみ表示。_scoring がある場合はその結果を優先使用。
   function _renderReasonPanel(judgment) {
     if (!judgment) return '';
     const noPos = ['buy_wait', 'sell_wait', 'pass'].includes(judgment.state);
     if (!noPos) return '';
 
-    const { longPlan: lp, shortPlan: sp, planSummary, comment } = judgment;
-    const situation = comment?.situation || '--';
-
-    function reasonRow(label, text, cls = '') {
+    function siRow(label, text, cls = '') {
       if (!text || text === '--') return '';
-      return `<div class="reason-row${cls ? ' ' + cls : ''}">
-        <span class="reason-label">${label}</span>
-        <span class="reason-val">${text}</span>
+      return `<div class="si-row${cls ? ' ' + cls : ''}">
+        <span class="si-label">${label}</span>
+        <span class="si-val">${text}</span>
       </div>`;
     }
 
-    // 無効条件: ロング・ショートを1行に結合
+    const sc = judgment._scoring;
+
+    if (sc && sc.output) {
+      const o   = sc.output;
+      const dir = o.direction;
+      const dirCls = dir === 'ロング' ? 'si-dir-long' : dir === 'ショート' ? 'si-dir-short' : 'si-dir-neutral';
+
+      return `
+      <div class="card si-panel">
+        <div class="si-header">
+          <span class="si-title">状況</span>
+          <span class="si-dir-badge ${dirCls}">${dir}</span>
+        </div>
+        ${siRow('評価',        o.evaluation, 'si-eval')}
+        ${siRow('NG',          o.avoid,      'si-avoid')}
+        ${siRow('要約',        o.summary,    'si-summary')}
+      </div>`;
+    }
+
+    // フォールバック: 旧ロジック
+    const { longPlan: lp, shortPlan: sp, planSummary, comment } = judgment;
+    const situation = comment?.situation || '--';
     const invalidParts = [];
     if (lp?.invalidation) invalidParts.push(lp.invalidation);
     if (sp?.invalidation) invalidParts.push(sp.invalidation);
     const invalidText = invalidParts.join('　/　');
 
     return `
-    <div class="card reason-panel">
-      <div class="reason-header">
-        <span class="reason-title">判断理由</span>
-        <span class="reason-state">${judgment.stateLabel ?? ''}</span>
+    <div class="card si-panel">
+      <div class="si-header">
+        <span class="si-title">状況</span>
+        <span class="si-state-label">${judgment.stateLabel ?? ''}</span>
       </div>
-      ${reasonRow('現状', situation)}
-      ${reasonRow('優先方向', planSummary?.label)}
-      ${lp ? reasonRow('ロング根拠', lp.reason, 'reason-long') : ''}
-      ${sp ? reasonRow('ショート根拠', sp.reason, 'reason-short') : ''}
-      ${invalidText ? reasonRow('無効条件', invalidText, 'reason-invalid') : ''}
+      ${siRow('現状',    situation)}
+      ${siRow('優先方向', planSummary?.label)}
+      ${lp ? siRow('ロング根拠', lp.reason, 'si-long') : ''}
+      ${sp ? siRow('ショート根拠', sp.reason, 'si-short') : ''}
+      ${invalidText ? siRow('無効条件', invalidText, 'si-invalid') : ''}
     </div>`;
   }
 

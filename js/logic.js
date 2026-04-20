@@ -84,7 +84,22 @@ const Logic = (() => {
       return computeExitJudgment(stockData, marketData, position);
     }
 
-    return computeEntryJudgment(stockData, marketData);
+    const judgment = computeEntryJudgment(stockData, marketData);
+
+    // スコアリングエンジンを呼び出して結果を付加
+    try {
+      if (typeof Scoring !== 'undefined') {
+        const scoring = Scoring.analyze(stockData, marketData, position);
+        if (scoring) {
+          judgment._scoring = scoring;
+          Scoring.logAnalysis(scoring);
+        }
+      }
+    } catch (e) {
+      console.warn('[Scoring] analyze error:', e);
+    }
+
+    return judgment;
   }
 
   // ----------------------------------------------------------
