@@ -115,6 +115,8 @@ const Scoring = (() => {
     const recentLowBreak   = cp < rL5;
     const invalidOfs       = CFG.BREAKOUT_INVALIDATE_OFFSET || 3;
     const breakHoldSuccess = recentHighBreak && cp > rH5 - invalidOfs;
+    // Short 側のブレイクダウン継続判定 (EQ/classifyState で利用)
+    const breakHoldShort   = recentLowBreak  && cp < rL5 + invalidOfs;
 
     // ── 出来高 ─────────────────────────────────────────────────
     const volHigh = _isVolumeHigh(candles);
@@ -165,6 +167,8 @@ const Scoring = (() => {
       // 直近高値・安値 (buildOutput のトリガー計算用)
       _rH5: rH5,
       _rL5: rL5,
+      // ショートブレイクダウン継続判定
+      _breakHoldShort: breakHoldShort,
     };
   }
 
@@ -189,9 +193,10 @@ const Scoring = (() => {
       _supportLevel: sup,
       _resistLevel:  res,
       _recentRange5: rng,
-      _nearSupport:  nearSup,
-      _nearResist:   nearRes,
-      current_price: cp,
+      _nearSupport:    nearSup,
+      _nearResist:     nearRes,
+      _breakHoldShort: bhs_short,
+      current_price:   cp,
       position,
     } = data;
 
@@ -240,7 +245,8 @@ const Scoring = (() => {
     let eq = 5.0;
 
     if      (am ===  1 && nearSup)         eq = 8.5;  // 上昇中に支持帯付近=押し目の形
-    else if (bhs)                           eq = 8.0;  // ブレイクアウト継続
+    else if (bhs)                           eq = 8.0;  // ロングブレイクアウト継続
+    else if (bhs_short)                     eq = 8.0;  // ショートブレイクダウン継続
     else if (am ===  1 && zt === 'high')   eq = 3.5;  // 高値圏追いかけロング
     else if (am === -1 && nearRes)         eq = 8.5;  // 下落中に抵抗帯付近=戻り売りの形
     else if (am === -1 && zt === 'low')    eq = 3.5;  // 安値圏追いかけショート
@@ -293,6 +299,12 @@ const Scoring = (() => {
 
     // 強い初動: どちらかが明確優勢 + 入り形が良い + 場所リスク許容範囲
     if ((ls >= 7.5 || bs >= 7.5) && eq >= 7.0 && lr <= 6.0) return '強い初動';
+    // 強い初動 (ブレイク直接判定): break_hold_success で LR 制約をバイパス
+    //   ロング: 高値を明確に上抜け + VWAP・5MA 上位 + スコア優勢
+    //   ショート: 安値を明確に割り込み + VWAP・5MA 下位 + スコア優勢
+    const trueBreakoutLong   = am ===  1 && (data?.break_hold_success || false) && ls >= 7.5 && eq >= 7.0;
+    const trueBreakdownShort = am === -1 && (data?._breakHoldShort    || false) && bs >= 7.5 && eq >= 7.0;
+    if (trueBreakoutLong || trueBreakdownShort) return '強い初動';
 
     // 崩れ: ショート方向が強く、ロング方向が明確に弱い
     if (bs >= 7.0 && ls <= 4.0) return '崩れ';
@@ -327,6 +339,7 @@ const Scoring = (() => {
       _rL5: rL5,
       current_price:  cp,
       day_high, day_low,
+      vwap, ma5,
     } = data;
 
     const isLongBias = ls >= bs;
@@ -334,204 +347,272 @@ const Scoring = (() => {
       ls > bs + 0.5 ? 'ロング' :
       bs > ls + 0.5 ? 'ショート' : '中立';
 
-    // 確認バッファ: 「接触してから入る」を価格で表現 (最低3円)
-    const buf = Math.max(Math.round(rng * 0.12), 3);
+    // ----------------------------------------------------------
+    // Step A: エントリー型を決定
+    // ブレイク型判定条件 (ユーザー指定):
+    //   Long : cp >= rH5+1 && cp > vwap && cp > ma5
+    //   Short: cp <= rL5-1 && cp < vwap && cp < ma5
+    // ----------------------------------------------------------
+    const isBreakoutLong   = cp >= rH5 + 1 && cp > vwap && cp > ma5;
+    const isBreakdownShort = cp <= rL5 - 1 && cp < vwap && cp < ma5;
 
-    let entryPlan, stopLoss, targets, summary;
-    let avoid   = [];   // 2〜3件の具体的NG行動リスト
-    // 数値価格 (UI表示用): entry=エントリー目安, stop=損切り, tp1=利確①, tp2=目標②
+    let entryType = 'wait';
+    if (state === '強い初動') {
+      entryType = isLongBias
+        ? (isBreakoutLong   ? 'breakout_long'          : 'support_bounce_long')
+        : (isBreakdownShort ? 'breakdown_short'         : 'resistance_reject_short');
+    } else if (state === '押し目候補') {
+      entryType = isLongBias ? 'pullback_long' : 'mean_revert_short';
+    } else if (state === '崩れ') {
+      entryType = !isLongBias ? 'mean_revert_short' : 'wait';
+    }
+
+    // ----------------------------------------------------------
+    // Step B: 型ごとのバッファ / 価格計算
+    //   ブレイク型  : buf = max(rng×0.12, 3)  ダマシ防止で少し厚め
+    //   反発型      : buf = max(rng×0.08, 2)  接触確認重視で薄め
+    //   minSep      : ロング・ショート最小分離幅
+    // ----------------------------------------------------------
+    const bufBreak = Math.max(Math.round(rng * 0.12), 3);
+    const bufSmall = Math.max(Math.round(rng * 0.08), 2);
+    const minSep   = Math.max(Math.round(rng * 0.25), 10);
+
     let prices  = { entry: null, stop: null, tp1: null, tp2: null };
-    // エントリー条件 / 無効化ライン: long・short それぞれで管理
-    let trigger = {
-      long:  { entry: '', invalidation: '' },
-      short: { entry: '', invalidation: '' },
+    let entryPlan = '';
+
+    // 型ラベル (ログ・デバッグ用)
+    const ENTRY_TYPE_LABEL = {
+      breakout_long:          'ブレイクアウト型(ロング)',
+      support_bounce_long:    'サポート反発型(ロング)',
+      pullback_long:          '押し目反発型(ロング)',
+      breakdown_short:        'ブレイクダウン型(ショート)',
+      resistance_reject_short:'レジスタンス失敗型(ショート)',
+      mean_revert_short:      '戻り売り型(ショート)',
+      wait:                   '待機',
     };
+
+    // ----------------------------------------------------------
+    // Step B: 型ごとの価格計算
+    // ----------------------------------------------------------
+    switch (entryType) {
+
+      case 'breakout_long': {
+        // 根拠: rH5 を上抜けた慣性。引き付けてから入る
+        // 損切り: ブレイク水準(rH5)を割り込んだら無効
+        const e = rH5 + bufBreak;
+        prices    = { entry: e, stop: Math.round(rH5 - rng * 0.15),
+                      tp1: Math.round(e + rng * 1.2), tp2: Math.round(e + rng * 2.0) };
+        entryPlan = `${_fmtP(rH5)} 超え後の小戻り → 陽線1〜2本維持確認 → ロング`;
+        break;
+      }
+      case 'support_bounce_long': {
+        // 根拠: VWAP/5MA に接触して反発。素早く入る
+        // 損切り: サポート(sup)を割り込んだら無効
+        const e = sup + bufSmall;
+        prices    = { entry: e, stop: Math.round(sup - rng * 0.30),
+                      tp1: Math.round(e + rng * 1.0), tp2: Math.round(e + rng * 1.8) };
+        entryPlan = `${_fmtP(sup)} 接触後、下ヒゲまたは陽線で反発確認 → ロング`;
+        break;
+      }
+      case 'pullback_long': {
+        // 根拠: トレンドは上だが今は押し中。サポート到達を待って入る
+        // 損切り: サポート(sup)を割り込んだら押し目失敗
+        const e = sup + bufSmall;
+        prices    = { entry: e, stop: Math.round(sup - rng * 0.30),
+                      tp1: Math.round(e + rng * 1.0), tp2: Math.round(e + rng * 1.7) };
+        entryPlan = `${_fmtP(sup)}〜${_fmtP(sup + bufSmall * 2)} まで下げてから、下ヒゲ陽線で反発確認 → ロング`;
+        break;
+      }
+      case 'breakdown_short': {
+        // 根拠: rL5 を割り込んだ慣性。引き付けてから入る
+        // 損切り: ブレイク水準(rL5)を上回ったら無効
+        const e = rL5 - bufBreak;
+        prices    = { entry: e, stop: Math.round(rL5 + rng * 0.15),
+                      tp1: Math.round(e - rng * 1.2), tp2: Math.round(e - rng * 2.0) };
+        entryPlan = `${_fmtP(rL5)} 割れ後の戻り → 陰線1〜2本維持確認 → ショート`;
+        break;
+      }
+      case 'resistance_reject_short': {
+        // 根拠: VWAP/5MA に接触して上値を抑えられた
+        // 損切り: レジスタンス(res)を上抜けたら無効
+        const e = res - bufSmall;
+        prices    = { entry: e, stop: Math.round(res + rng * 0.30),
+                      tp1: Math.round(e - rng * 1.0), tp2: Math.round(e - rng * 1.8) };
+        entryPlan = `${_fmtP(res)} 接触後、上ヒゲまたは陰線で上値抑え確認 → ショート`;
+        break;
+      }
+      case 'mean_revert_short': {
+        // 根拠: 下落トレンド中の戻りでレジスタンスに抑えられる
+        // 損切り: レジスタンス(res)を上抜けたら戻り失敗
+        const e = res - bufSmall;
+        prices    = { entry: e, stop: Math.round(res + rng * 0.30),
+                      tp1: Math.round(e - rng * 1.0), tp2: Math.round(e - rng * 1.7) };
+        entryPlan = `${_fmtP(res - bufSmall * 2)}〜${_fmtP(res)} まで戻ってから、上ヒゲ陰線で上値抑え確認 → ショート`;
+        break;
+      }
+      default: // wait
+        entryPlan = state === '高値揉み' ? `ブレイク方向が確定するまで見送り`
+                  : state === '崩れ'     ? `下げ止まりのローソク（長い下ヒゲ・陽線転換）を確認してから判断`
+                                         : `ロング・ショートともに根拠が薄い。ブレイク方向が出るまで待機`;
+    }
+
+    const stopLoss = prices.stop != null ? _fmtP(prices.stop) : '−';
+    const targets  = prices.tp1 != null
+      ? [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`] : ['−'];
+
+    // ----------------------------------------------------------
+    // Step C: 状態 + 型に応じたテキスト出力
+    //         avoid / summary / trigger
+    // ----------------------------------------------------------
+    let avoid   = [];
+    let summary = '';
+    let trigger = { long: { entry: '', invalidation: '' }, short: { entry: '', invalidation: '' } };
 
     switch (state) {
 
       case '強い初動':
-        if (isLongBias) {
-          const e = sup + buf;
-          prices    = { entry: e, stop: Math.round(sup - rng * 0.4), tp1: Math.round(e + rng * 1.2), tp2: Math.round(e + rng * 2.0) };
-          entryPlan = `${_fmtP(sup)} 接触後、下ヒゲまたは陽線で反発確認 → ロング`;
-          stopLoss  = _fmtP(prices.stop);
-          targets   = [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`];
-          avoid     = [
-            `${_fmtP(sup)} 未到達での飛び乗りロングは避ける`,
-            `VWAP・5MA を割り込んだまま継続してのロングは避ける`,
+        if (entryType === 'breakout_long') {
+          avoid   = [
+            `${_fmtP(rH5)} を確認せず勢いだけで飛び乗るロングは避ける`,
+            `VWAP・5MA 両方の下にある状態でのロングは避ける`,
+            `出来高を伴わない弱い陽線だけでの見切り買いは避ける`,
+          ];
+          summary = `ロング優勢（ブレイク型）。${_fmtP(rH5)} 超え→陽線維持確認してから入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(rH5)} 超え → 小戻り後に陽線維持 → ロングエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 割れ → ブレイク失敗・ロング見送り` },
+            short: { entry: `${_fmtP(rH5)} 上抜け失敗・陰転確認 → ショート検討`,
+                     invalidation: `` },
+          };
+        } else if (entryType === 'support_bounce_long') {
+          avoid   = [
+            `${_fmtP(sup)} に触れる前の飛び乗りロングは避ける`,
+            `VWAP・5MA を割り込んだままでのロングは避ける`,
             `出来高を伴わない小陽線だけでの見切りエントリーは避ける`,
           ];
-          summary   = `ロング優勢。${_fmtP(sup)} 接触→下ヒゲ陽線で反発確認してから入る`;
-          trigger   = {
-            long:  {
-              entry:        `${_fmtP(sup)} 接触 → 下ヒゲ・陽線で反発確認 → ロングエントリー`,
-              invalidation: `${_fmtP(prices.stop)} 割れ → ロング見送り・ポジション整理`,
-            },
-            short: {
-              entry:        `${_fmtP(res)} 上抜け失敗・陰転確認 → ショート検討`,
-              invalidation: ``,
-            },
+          summary = `ロング優勢（サポート反発型）。${_fmtP(sup)} 接触→下ヒゲ陽線で反発確認してから入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(sup)} 接触 → 下ヒゲ・陽線で反発確認 → ロングエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 割れ → ロング見送り・ポジション整理` },
+            short: { entry: `${_fmtP(res)} 上抜け失敗・陰転確認 → ショート検討`,
+                     invalidation: `` },
           };
-        } else {
-          const e = res - buf;
-          prices    = { entry: e, stop: Math.round(res + rng * 0.4), tp1: Math.round(e - rng * 1.2), tp2: Math.round(e - rng * 2.0) };
-          entryPlan = `${_fmtP(res)} 接触後、上ヒゲまたは陰線で上値抑え確認 → ショート`;
-          stopLoss  = _fmtP(prices.stop);
-          targets   = [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`];
-          avoid     = [
+        } else if (entryType === 'breakdown_short') {
+          avoid   = [
+            `${_fmtP(rL5)} 割れを確認せず勢いだけで飛び乗るショートは避ける`,
+            `VWAP・5MA 両方の上にある状態でのショートは避ける`,
+            `出来高を伴わない弱い陰線だけでの見切り空売りは避ける`,
+          ];
+          summary = `ショート優勢（ブレイクダウン型）。${_fmtP(rL5)} 割れ→陰線維持確認してから入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(prices.stop)} 上抜け維持 → ブレイクダウン失敗・様子見`,
+                     invalidation: `` },
+            short: { entry: `${_fmtP(rL5)} 割れ → 戻り後に陰線維持 → ショートエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 上抜け → ショート見送り・撤退` },
+          };
+        } else { // resistance_reject_short
+          avoid   = [
             `${_fmtP(res)} 上抜け直後の飛び乗りショートは避ける`,
             `陽線が継続している局面への逆張りショートは避ける`,
             `VWAP 回復後の戻りショートは慎重に判断する`,
           ];
-          summary   = `ショート優勢。${_fmtP(res)} 接触→上ヒゲ陰線で上値抑え確認してから入る`;
-          trigger   = {
-            long:  {
-              entry:        `${_fmtP(prices.stop)} 上抜け維持 → ショート見送り・ロング再考`,
-              invalidation: ``,
-            },
-            short: {
-              entry:        `${_fmtP(res)} 接触 → 上ヒゲ・陰線で上値抑え確認 → ショートエントリー`,
-              invalidation: `${_fmtP(prices.stop)} 上抜け → ショート見送り・撤退`,
-            },
+          summary = `ショート優勢（レジスタンス失敗型）。${_fmtP(res)} 接触→上ヒゲ陰線で上値抑え確認してから入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(prices.stop)} 上抜け維持 → ショート見送り・ロング再考`,
+                     invalidation: `` },
+            short: { entry: `${_fmtP(res)} 接触 → 上ヒゲ・陰線で上値抑え確認 → ショートエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 上抜け → ショート見送り・撤退` },
           };
         }
         break;
 
       case '押し目候補':
-        if (isLongBias) {
-          const e = sup + buf;
-          prices    = { entry: e, stop: Math.round(sup - rng * 0.5), tp1: Math.round(e + rng * 1.0), tp2: Math.round(e + rng * 1.8) };
-          entryPlan = `${_fmtP(sup)}〜${_fmtP(sup + buf * 2)} まで下げてから、下ヒゲ陽線で反発確認 → ロング`;
-          stopLoss  = _fmtP(prices.stop);
-          targets   = [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`];
-          avoid     = [
+        if (entryType === 'pullback_long') {
+          avoid   = [
             `${_fmtP(sup)} 未到達での押し途中への飛び乗りロングは避ける`,
             `陰線が継続している中の逆張りロングは避ける`,
             `反発の確認なしに見切り買いするのは避ける`,
           ];
-          summary   = `押し目待ち。${_fmtP(sup)} 付近まで下げてきたら反発ローソクを確認して入る`;
-          trigger   = {
-            long:  {
-              entry:        `${_fmtP(sup)} 接触 → 下ヒゲ陽線で反発確認 → ロングエントリー`,
-              invalidation: `${_fmtP(prices.stop)} 割れ → 押し目失敗・ロング見送り`,
-            },
-            short: {
-              entry:        `${_fmtP(prices.stop)} 割れ・出来高増 → ショート検討`,
-              invalidation: ``,
-            },
+          summary = `押し目待ち（押し目反発型）。${_fmtP(sup)} 付近まで下げてきたら反発ローソクを確認して入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(sup)} 接触 → 下ヒゲ陽線で反発確認 → ロングエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 割れ → 押し目失敗・ロング見送り` },
+            short: { entry: `${_fmtP(prices.stop)} 割れ・出来高増 → ショート検討`,
+                     invalidation: `` },
           };
-        } else {
-          const e = res - buf;
-          prices    = { entry: e, stop: Math.round(res + rng * 0.5), tp1: Math.round(e - rng * 1.0), tp2: Math.round(e - rng * 1.8) };
-          entryPlan = `${_fmtP(res - buf * 2)}〜${_fmtP(res)} まで戻ってから、上ヒゲ陰線で上値抑え確認 → ショート`;
-          stopLoss  = _fmtP(prices.stop);
-          targets   = [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`];
-          avoid     = [
+        } else { // mean_revert_short
+          avoid   = [
             `${_fmtP(res)} 未到達での戻り途中への早まりショートは避ける`,
             `陽線が続いている中での逆張りショートは避ける`,
             `上値抑えの確認なしに見切りショートするのは避ける`,
           ];
-          summary   = `戻り売り待ち。${_fmtP(res)} 付近まで戻ってから上値抑えのローソクを確認して入る`;
-          trigger   = {
-            long:  {
-              entry:        `${_fmtP(prices.stop)} 上抜け → 戻り失敗・ロング検討`,
-              invalidation: ``,
-            },
-            short: {
-              entry:        `${_fmtP(res)} 接触 → 上ヒゲ陰線で上値抑え確認 → ショートエントリー`,
-              invalidation: `${_fmtP(prices.stop)} 上抜け → 戻り失敗・ショート見送り`,
-            },
+          summary = `戻り売り待ち（戻り売り型）。${_fmtP(res)} 付近まで戻ってから上値抑えのローソクを確認して入る`;
+          trigger = {
+            long:  { entry: `${_fmtP(prices.stop)} 上抜け → 戻り失敗・ロング検討`,
+                     invalidation: `` },
+            short: { entry: `${_fmtP(res)} 接触 → 上ヒゲ陰線で上値抑え確認 → ショートエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 上抜け → 戻り失敗・ショート見送り` },
           };
         }
         break;
 
       case '高値揉み':
-        entryPlan = `ブレイク方向が確定するまで見送り`;
-        stopLoss  = '−';
-        targets   = ['−'];
-        avoid     = [
+        avoid   = [
           `高値圏でのブレイク未確認の追いかけ買いは避ける`,
           `出来高を伴わない高値更新でのロングは避ける`,
           `根拠なしのナンピン・買い増しは絶対に避ける`,
         ];
-        summary   = `高値圏で方向感なし。追いかけず、ブレイク方向を確認してから動く`;
-        trigger   = {
-          long:  {
-            entry:        `${_fmtP(rH5)} 上抜け → 陽線維持2本以上確認 → ロング検討`,
-            invalidation: `${_fmtP(rL5)} 割れ → ロング見送り`,
-          },
-          short: {
-            entry:        `${_fmtP(rL5)} 割れ → VWAP 下落継続 → ショート検討`,
-            invalidation: `${_fmtP(rH5)} 上抜け維持 → ショート見送り`,
-          },
+        summary = `高値圏で方向感なし。追いかけず、ブレイク方向を確認してから動く`;
+        trigger = {
+          long:  { entry: `${_fmtP(rH5)} 上抜け → 陽線維持2本以上確認 → ロング検討`,
+                   invalidation: `${_fmtP(rL5)} 割れ → ロング見送り` },
+          short: { entry: `${_fmtP(rL5)} 割れ → VWAP 下落継続 → ショート検討`,
+                   invalidation: `${_fmtP(rH5)} 上抜け維持 → ショート見送り` },
         };
         break;
 
       case '崩れ':
-        if (!isLongBias) {
-          const e = res - buf;
-          prices    = { entry: e, stop: Math.round(res + rng * 0.4), tp1: Math.round(e - rng * 1.2), tp2: Math.round(e - rng * 2.0) };
-          entryPlan = `${_fmtP(res)} 付近まで戻ってから、上ヒゲ・陰線で上値抑え確認 → ショート`;
-          stopLoss  = _fmtP(prices.stop);
-          targets   = [`①${_fmtP(prices.tp1)}`, `②${_fmtP(prices.tp2)}`];
-          avoid     = [
+        if (entryType === 'mean_revert_short') {
+          avoid   = [
             `下落継続中の逆張りロングは避ける`,
             `戻りを待たずに安値水準での飛び乗りショートは避ける`,
             `VWAP・5MA 割れ水準でのロングは避ける`,
           ];
-          summary   = `崩れ局面。ロングは見送り。${_fmtP(res)} への戻りを待ってショート判断する`;
-          trigger   = {
-            long:  {
-              entry:        ``,
-              invalidation: `${_fmtP(prices.stop)} 上抜け維持 → 崩れ終了・様子見に切替`,
-            },
-            short: {
-              entry:        `${_fmtP(res)} 付近まで戻る → 上ヒゲ陰線で上値抑え確認 → ショートエントリー`,
-              invalidation: `${_fmtP(prices.stop)} 上抜け → ショート見送り`,
-            },
+          summary = `崩れ局面（戻り売り型）。ロングは見送り。${_fmtP(res)} への戻りを待ってショート判断する`;
+          trigger = {
+            long:  { entry: ``,
+                     invalidation: `${_fmtP(prices.stop)} 上抜け維持 → 崩れ終了・様子見に切替` },
+            short: { entry: `${_fmtP(res)} 付近まで戻る → 上ヒゲ陰線で上値抑え確認 → ショートエントリー`,
+                     invalidation: `${_fmtP(prices.stop)} 上抜け → ショート見送り` },
           };
-        } else {
-          entryPlan = `下げ止まりのローソク（長い下ヒゲ・陽線転換）を確認してから判断`;
-          stopLoss  = '−';
-          targets   = ['−'];
-          avoid     = [
+        } else { // wait (ロングバイアスの崩れ)
+          avoid   = [
             `下落継続中の逆張りロングは避ける`,
             `反転確認なしの見切りロングは避ける`,
             `安値更新が続く中でのナンピンは避ける`,
           ];
-          summary   = `崩れ気味。ロングは見送り。${_fmtP(sup)} 回復・維持を確認してから再検討する`;
-          trigger   = {
-            long:  {
-              entry:        `${_fmtP(sup)} 回復 → 陽線維持確認 → ロング再検討`,
-              invalidation: `${_fmtP(rL5)} 割れ継続 → ロング見送り`,
-            },
-            short: {
-              entry:        `${_fmtP(rL5)} 割れ・出来高増加 → ショート検討`,
-              invalidation: ``,
-            },
+          summary = `崩れ気味。ロングは見送り。${_fmtP(sup)} 回復・維持を確認してから再検討する`;
+          trigger = {
+            long:  { entry: `${_fmtP(sup)} 回復 → 陽線維持確認 → ロング再検討`,
+                     invalidation: `${_fmtP(rL5)} 割れ継続 → ロング見送り` },
+            short: { entry: `${_fmtP(rL5)} 割れ・出来高増加 → ショート検討`,
+                     invalidation: `` },
           };
         }
         break;
 
       default: // 様子見
-        entryPlan = `ロング・ショートともに根拠が薄い。ブレイク方向が出るまで待機`;
-        stopLoss  = '−';
-        targets   = ['−'];
-        avoid     = [
+        avoid   = [
           `根拠なしの衝動的な飛び乗りエントリーは避ける`,
           `VWAP 付近での見切り売買は避ける`,
           `どちら方向へもブレイク未確認の追いかけは避ける`,
         ];
-        summary   = `様子見。${_fmtP(rH5)} 上抜けまたは ${_fmtP(rL5)} 割れを確認してから動く`;
-        trigger   = {
-          long:  {
-            entry:        `${_fmtP(rH5)} 上抜け → 陽線1〜2本維持確認 → ロング検討`,
-            invalidation: `${_fmtP(rL5)} 割れ → ロング見送り`,
-          },
-          short: {
-            entry:        `${_fmtP(rL5)} 割れ → 陰線継続確認 → ショート検討`,
-            invalidation: `${_fmtP(rH5)} 上抜け → ショート見送り`,
-          },
+        summary = `様子見。${_fmtP(rH5)} 上抜けまたは ${_fmtP(rL5)} 割れを確認してから動く`;
+        trigger = {
+          long:  { entry: `${_fmtP(rH5)} 上抜け → 陽線1〜2本維持確認 → ロング検討`,
+                   invalidation: `${_fmtP(rL5)} 割れ → ロング見送り` },
+          short: { entry: `${_fmtP(rL5)} 割れ → 陰線継続確認 → ショート検討`,
+                   invalidation: `${_fmtP(rH5)} 上抜け → ショート見送り` },
         };
     }
 
@@ -539,7 +620,12 @@ const Scoring = (() => {
       `LS:${scores.long_strength_score} / BS:${scores.breakdown_score}` +
       ` / LR:${scores.location_risk_score} / EQ:${scores.entry_quality_score}`;
 
-    return { state, direction, evaluation, entryPlan, stopLoss, targets, avoid, summary, prices, trigger };
+    return {
+      state, direction, evaluation, entryPlan, stopLoss, targets,
+      avoid, summary, prices, trigger,
+      entryType,
+      entryTypeLabel: ENTRY_TYPE_LABEL[entryType] || entryType,
+    };
   }
 
 
@@ -557,15 +643,20 @@ const Scoring = (() => {
 
   function logAnalysis(result) {
     const entry = {
-      timestamp: new Date().toISOString(),
-      state:     result.state,
-      direction: result.output.direction,
-      scores:    result.scores,
-      summary:   result.output.summary,
+      timestamp:      new Date().toISOString(),
+      state:          result.state,
+      direction:      result.output.direction,
+      entryType:      result.output.entryType,
+      entryTypeLabel: result.output.entryTypeLabel,
+      scores:         result.scores,
+      prices:         result.output.prices,
+      summary:        result.output.summary,
     };
 
-    console.group(`[Scoring] ${result.state} | ${result.output.direction}`);
+    console.group(`[Scoring] ${result.state} | ${result.output.direction} | ${result.output.entryTypeLabel}`);
     console.log('スコア :', result.scores);
+    console.log('エントリー型:', result.output.entryType, '/', result.output.entryTypeLabel);
+    console.log('価格  :', result.output.prices);
     console.log('中間データ:', result.data);
     console.log('出力   :', result.output);
     console.groupEnd();
