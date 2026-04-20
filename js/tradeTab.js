@@ -93,12 +93,24 @@ const TradeTab = (() => {
     const root = document.getElementById('trade-tab-content');
     if (!root) return;
 
-    root.innerHTML = `
-      ${_renderUpdateArea(stockData)}
-      ${_renderEntryPlanPanel(judgment, status)}
+    // 保有中かどうかで表示切り替え
+    // ノーポジ: 新2ブロックUI(エントリープラン・判断理由) + 旧パネルを display:none で温存
+    // 保有中:   旧UIをそのまま維持
+    const isHold = status === 'hold_long' || status === 'hold_short' || status === 'partial';
+
+    const legacyPanels = `
       ${_renderJudgmentPanel(status, judgment, stockData, position)}
       ${_renderAiCommentaryPanel(state.aiCommentary, status)}
       ${_renderCommentPanel(judgment)}
+    `;
+
+    root.innerHTML = `
+      ${_renderUpdateArea(stockData)}
+      ${!isHold ? `
+        ${_renderEntryPlanPanel(judgment, status)}
+        ${_renderReasonPanel(judgment)}
+        <div style="display:none">${legacyPanels}</div>
+      ` : legacyPanels}
       ${_renderOperationPanel(status, stockData, position)}
       ${_renderTradeList(session)}
       ${_renderDaySummary(session)}
@@ -342,18 +354,10 @@ const TradeTab = (() => {
       <div class="ep-card ep-long">
         <div class="ep-card-title ep-long-title">📈 ロング</div>
         <div class="ep-prices">
-          ${priceRow('買い目安',   lp.entry,        'ep-entry')}
-          ${priceRow('損切り',     lp.stopLoss,     'ep-stop')}
-          ${priceRow('利確①',     lp.takeProfit1,  'ep-tp1')}
-          ${priceRow('目標②',     lp.takeProfit2,  'ep-tp2')}
-        </div>
-        <div class="ep-text-row">
-          <span class="ep-text-lbl">根拠</span>
-          <span class="ep-text-val">${lp.reason ?? '--'}</span>
-        </div>
-        <div class="ep-text-row ep-invalid-row">
-          <span class="ep-text-lbl">無効</span>
-          <span class="ep-text-val ep-invalid">${lp.invalidation ?? '--'}</span>
+          ${priceRow('買い目安', lp.entry,       'ep-entry')}
+          ${priceRow('損切り',   lp.stopLoss,    'ep-stop')}
+          ${priceRow('利確①',   lp.takeProfit1, 'ep-tp1')}
+          ${priceRow('目標②',   lp.takeProfit2, 'ep-tp2')}
         </div>
       </div>` : '';
 
@@ -361,18 +365,10 @@ const TradeTab = (() => {
       <div class="ep-card ep-short">
         <div class="ep-card-title ep-short-title">📉 ショート</div>
         <div class="ep-prices">
-          ${priceRow('売り目安',   sp.entry,        'ep-entry ep-entry-short')}
-          ${priceRow('損切り',     sp.stopLoss,     'ep-stop')}
-          ${priceRow('利確①',     sp.takeProfit1,  'ep-tp1')}
-          ${priceRow('目標②',     sp.takeProfit2,  'ep-tp2')}
-        </div>
-        <div class="ep-text-row">
-          <span class="ep-text-lbl">根拠</span>
-          <span class="ep-text-val">${sp.reason ?? '--'}</span>
-        </div>
-        <div class="ep-text-row ep-invalid-row">
-          <span class="ep-text-lbl">無効</span>
-          <span class="ep-text-val ep-invalid">${sp.invalidation ?? '--'}</span>
+          ${priceRow('売り目安', sp.entry,       'ep-entry ep-entry-short')}
+          ${priceRow('損切り',   sp.stopLoss,    'ep-stop')}
+          ${priceRow('利確①',   sp.takeProfit1, 'ep-tp1')}
+          ${priceRow('目標②',   sp.takeProfit2, 'ep-tp2')}
         </div>
       </div>` : '';
 
@@ -463,6 +459,45 @@ const TradeTab = (() => {
         <span class="comment-label negation">否定条件</span>
         <span class="comment-text">${negationCondition || '--'}</span>
       </div>
+    </div>`;
+  }
+
+  // --- 判断理由パネル (ノーポジ時のみ) ---
+  // 現状・優先方向・ロング根拠・ショート根拠・無効条件を1ブロックに集約する。
+  // render() 側で isHold=false の時のみ呼び出されるが、内部でも念のり state チェックを行う。
+  function _renderReasonPanel(judgment) {
+    if (!judgment) return '';
+    const noPos = ['buy_wait', 'sell_wait', 'pass'].includes(judgment.state);
+    if (!noPos) return '';
+
+    const { longPlan: lp, shortPlan: sp, planSummary, comment } = judgment;
+    const situation = comment?.situation || '--';
+
+    function reasonRow(label, text, cls = '') {
+      if (!text || text === '--') return '';
+      return `<div class="reason-row${cls ? ' ' + cls : ''}">
+        <span class="reason-label">${label}</span>
+        <span class="reason-val">${text}</span>
+      </div>`;
+    }
+
+    // 無効条件: ロング・ショートを1行に結合
+    const invalidParts = [];
+    if (lp?.invalidation) invalidParts.push(lp.invalidation);
+    if (sp?.invalidation) invalidParts.push(sp.invalidation);
+    const invalidText = invalidParts.join('　/　');
+
+    return `
+    <div class="card reason-panel">
+      <div class="reason-header">
+        <span class="reason-title">判断理由</span>
+        <span class="reason-state">${judgment.stateLabel ?? ''}</span>
+      </div>
+      ${reasonRow('現状', situation)}
+      ${reasonRow('優先方向', planSummary?.label)}
+      ${lp ? reasonRow('ロング根拠', lp.reason, 'reason-long') : ''}
+      ${sp ? reasonRow('ショート根拠', sp.reason, 'reason-short') : ''}
+      ${invalidText ? reasonRow('無効条件', invalidText, 'reason-invalid') : ''}
     </div>`;
   }
 
