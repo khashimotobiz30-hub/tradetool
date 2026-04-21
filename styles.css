@@ -470,37 +470,7 @@ body {
 
 .computed-at { font-size: 11px; color: #aaa; }
 
-/* 条件ブロック */
-.condition-block {
-  border-radius: 6px;
-  padding: 10px 14px;
-  margin-bottom: 8px;
-}
-.long-block  { background: #f0faf4; border: 1px solid #b8e6c8; }
-.short-block { background: #fef9f0; border: 1px solid #f5d5a0; }
-
-.cond-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #444;
-  margin-bottom: 8px;
-}
-.cond-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 5px;
-  font-size: 13px;
-}
-.cond-row .label {
-  font-size: 11px;
-  color: #888;
-  min-width: 70px;
-  flex-shrink: 0;
-}
-.price-val   { font-weight: 700; font-variant-numeric: tabular-nums; }
-.stop-price  { color: #c0392b; font-weight: 700; }
-.neg-price   { color: #c0392b; font-size: 12px; }
+.price-val { font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* 保有中 */
 .hold-info { margin-bottom: 12px; }
@@ -529,13 +499,6 @@ body {
 .exit-row.escape  { background: #fff3cd; }
 .exit-row .label  { font-size: 11px; color: #666; min-width: 70px; }
 
-.pass-reason {
-  font-size: 13px;
-  color: #666;
-  padding: 8px 12px;
-  background: #f9f9f9;
-  border-radius: 4px;
-}
 .no-data-msg {
   text-align: center;
   color: #aaa;
@@ -1280,11 +1243,6 @@ input.price-units[type="number"] { -moz-appearance: textfield; }
   font-size: 10px;
   font-weight: 700;
 }
-.badge-fresh { background: #d5f0e4; color: #1b6a34; }
-.badge-stale { background: #fff3cd; color: #856404; }
-.badge-old   { background: #fce4e4; color: #922b21; }
-.badge-pass  { background: #f0f0f0; color: #666; }
-
 /* 画面共有由来バッジ */
 .badge-conf-high   { background: #d5f0e4; color: #1b5e20; }
 .badge-conf-medium { background: #fff3cd; color: #7d5a00; }

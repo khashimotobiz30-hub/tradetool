@@ -75,14 +75,6 @@ const TradeTab = (() => {
     return iso.slice(0, 10);
   }
 
-  // --- 鮮度バッジ ---
-  function freshnessTag(fetchedAt) {
-    const freshness = Logic.getMarketFreshness(fetchedAt);
-    const label     = Logic.marketFreshnessLabel(freshness);
-    const cls = freshness === 'fresh' ? 'badge-fresh' : freshness === 'stale' ? 'badge-stale' : 'badge-old';
-    return `<span class="badge ${cls}">${label}</span>`;
-  }
-
   // ----------------------------------------------------------
   // メインレンダリング
   // ----------------------------------------------------------
@@ -94,8 +86,8 @@ const TradeTab = (() => {
     if (!root) return;
 
     // 保有中かどうかで表示切り替え
-    // ノーポジ: 新2ブロックUI(エントリープラン・判断理由) + 旧パネルを display:none で温存
-    // 保有中:   旧UIをそのまま維持
+    // ノーポジ: スコアリングベースの2ブロックUI (エントリープラン・状況)
+    // 保有中:   判断パネル + 保有方針パネル + AIコメンタリー + コメント
     const isHold = status === 'hold_long' || status === 'hold_short' || status === 'partial';
 
     root.innerHTML = `
@@ -108,11 +100,6 @@ const TradeTab = (() => {
       ` : `
         ${_renderEntryPlanPanel(judgment, status)}
         ${_renderReasonPanel(judgment)}
-        <div style="display:none">
-          ${_renderJudgmentPanel(status, judgment, stockData, position)}
-          ${_renderAiCommentaryPanel(state.aiCommentary, status)}
-          ${_renderCommentPanel(judgment)}
-        </div>
       `}
       ${_renderOperationPanel(status, stockData, position)}
       ${_renderTradeList(session)}
@@ -283,33 +270,6 @@ const TradeTab = (() => {
           </div>
         </div>`;
 
-    } else if (judgment.state === 'buy_wait') {
-      const lc = judgment.longCondition || {};
-      content = `
-        <div class="condition-block long-block">
-          <div class="cond-title">ロング条件</div>
-          <div class="cond-row"><span class="label">エントリー</span><span>${lc.entryTrigger || '--'}</span></div>
-          <div class="cond-row"><span class="label">目標①</span><span class="price-val">${fmtPrc(lc.target1)}</span></div>
-          <div class="cond-row"><span class="label">目標②</span><span class="price-val">${fmtPrc(lc.target2)}</span></div>
-          <div class="cond-row"><span class="label">損切り</span><span class="price-val stop-price">${fmtPrc(lc.stopLoss)}</span></div>
-          <div class="cond-row"><span class="label">否定条件</span><span class="neg-price">${fmtPrc(lc.negationPrice)} 割れで無効</span></div>
-        </div>
-        ${judgment.passReason ? `<div class="pass-reason"><span class="badge badge-pass">見送り追加理由</span> ${judgment.passReason}</div>` : ''}`;
-
-    } else if (judgment.state === 'sell_wait') {
-      const sc = judgment.shortCondition || {};
-      content = `
-        <div class="condition-block short-block">
-          <div class="cond-title">ショート条件</div>
-          <div class="cond-row"><span class="label">エントリー</span><span>${sc.entryTrigger || '--'}</span></div>
-          <div class="cond-row"><span class="label">目標①</span><span class="price-val">${fmtPrc(sc.target1)}</span></div>
-          <div class="cond-row"><span class="label">目標②</span><span class="price-val">${fmtPrc(sc.target2)}</span></div>
-          <div class="cond-row"><span class="label">損切り</span><span class="price-val stop-price">${fmtPrc(sc.stopLoss)}</span></div>
-          <div class="cond-row"><span class="label">否定条件</span><span class="neg-price">${fmtPrc(sc.negationPrice)} 超えで無効</span></div>
-        </div>`;
-
-    } else if (judgment.state === 'pass') {
-      content = `<div class="pass-reason"><strong>見送り理由:</strong> ${judgment.passReason || '方向感なし'}</div>`;
     } else {
       content = `<div class="no-data-msg">${judgment.comment?.situation || ''}</div>`;
     }
