@@ -95,8 +95,6 @@ const TradeTab = (() => {
       ${isHold ? `
         ${_renderJudgmentPanel(status, judgment, stockData, position)}
         ${_renderHoldScoringPanel(judgment, position, stockData)}
-        ${_renderAiCommentaryPanel(state.aiCommentary, status)}
-        ${_renderCommentPanel(judgment)}
       ` : `
         ${_renderEntryPlanPanel(judgment, status)}
         ${_renderReasonPanel(judgment)}
